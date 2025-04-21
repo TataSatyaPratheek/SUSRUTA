@@ -1,225 +1,195 @@
-"""Tests for the treatment module."""
+# susruta/tests/test_treatment.py
+"""Tests for the treatment simulation module."""
 
 import pytest
 import torch
-import numpy as np
 import networkx as nx
+from torch_geometric.data import HeteroData
 from unittest.mock import patch, MagicMock
 
+# Import classes directly (fixtures are now in conftest.py)
 from susruta.treatment import TreatmentSimulator
+from susruta.models import GliomaGNN
+from susruta.graph import GliomaKnowledgeGraph
+
+# Fixtures like gnn_model, knowledge_graph, pyg_data, treatment_options, etc.,
+# are automatically injected by pytest from conftest.py
 
 
 class TestTreatmentSimulator:
     """Test suite for the TreatmentSimulator class."""
-    
-    def test_initialization(self, gnn_model, knowledge_graph):
+
+    def test_initialization(self, treatment_simulator, gnn_model, knowledge_graph):
         """Test initialization of TreatmentSimulator."""
-        simulator = TreatmentSimulator(gnn_model, knowledge_graph)
-        
-        assert simulator.model == gnn_model
-        assert simulator.graph == knowledge_graph
-        assert hasattr(simulator, 'device')
-    
-    def test_encode_treatment(self, treatment_simulator):
-        """Test treatment encoding for simulation."""
-        # Test with surgery treatment
-        surgery_config = {
-            'category': 'surgery',
-            'name': 'Gross total resection',
-            'intensity': 0.9,
-            'duration': 1
-        }
-        
-        surgery_features = treatment_simulator._encode_treatment(surgery_config)
-        
-        # Should be one-hot encoded for category (4 values) + 3 numerical features
-        assert len(surgery_features) == 7
-        
-        # First feature should be 1 for surgery (one-hot)
-        assert surgery_features[0] == 1
-        assert surgery_features[1] == 0  # radiation
-        assert surgery_features[2] == 0  # chemotherapy
-        assert surgery_features[3] == 0  # combined
-        
-        # Check numerical features
-        assert surgery_features[4] == 0.0  # dose (not used for surgery)
-        assert surgery_features[5] == 1.0  # duration
-        assert surgery_features[6] == 0.9  # intensity
-        
-        # Test with radiation treatment
-        radiation_config = {
-            'category': 'radiation',
-            'name': 'Standard radiation therapy',
-            'dose': 60.0,
-            'duration': 30
-        }
-        
-        radiation_features = treatment_simulator._encode_treatment(radiation_config)
-        
-        # Check one-hot encoding
-        assert radiation_features[0] == 0  # surgery
-        assert radiation_features[1] == 1  # radiation
-        assert radiation_features[2] == 0  # chemotherapy
-        assert radiation_features[3] == 0  # combined
-        
-        # Check numerical features
-        assert radiation_features[4] == 60.0  # dose
-        assert radiation_features[5] == 30.0  # duration
-        assert radiation_features[6] == 0.0  # intensity (not provided)
-    
-    def test_find_similar_treatments(self, treatment_simulator, treatment_options, pyg_data):
+        assert treatment_simulator.model == gnn_model
+        # Check graph structure if needed, comparing nodes/edges might be complex
+        assert isinstance(treatment_simulator.graph, nx.MultiDiGraph)
+        assert hasattr(treatment_simulator, 'device')
+        assert not treatment_simulator.model.training
+
+    def test_encode_treatment(self, treatment_simulator, treatment_options):
+        """Test encoding of treatment configurations."""
+        surgery_option = treatment_options[0]
+        encoded = treatment_simulator._encode_treatment(surgery_option)
+        # Expected length: 4 (category) + 3 (dose, duration, intensity) = 7
+        assert len(encoded) == 7
+        assert encoded[0] == 1 and encoded[1:4] == [0,0,0] # surgery category
+        # dose=0.0, duration=1.0, intensity=0.9
+        assert encoded[4:] == [0.0, 1.0, 0.9]
+
+        chemo_option = treatment_options[2]
+        encoded_chemo = treatment_simulator._encode_treatment(chemo_option)
+        assert len(encoded_chemo) == 7
+        assert encoded_chemo[2] == 1 and encoded_chemo[0:2] == [0,0] and encoded_chemo[3] == 0 # chemo category
+        # dose=150.0, duration=120.0, intensity=0.0
+        assert encoded_chemo[4:] == [150.0, 120.0, 0.0]
+
+    def test_find_similar_treatments(self, treatment_simulator, treatment_options, pyg_data, knowledge_graph):
         """Test finding similar treatments in the graph."""
-        # Mock the forward pass to return consistent embeddings
-        with patch.object(treatment_simulator.model, 'forward') as mock_forward:
-            # Create dummy embeddings
-            node_embeddings = {
-                'treatment': torch.randn(5, 16)  # 5 treatments, 16 dims
-            }
-            mock_forward.return_value = (None, node_embeddings)
-            
-            # Create a dummy mapping from ids to indices
-            pyg_data['treatment'].original_ids = [f"treatment_{i}" for i in range(1, 6)]
-            
-            # Add treatment nodes to the graph with categories
-            for i in range(1, 6):
-                treatment_id = f"treatment_{i}"
-                category = 'surgery' if i <= 2 else 'radiation'
-                treatment_simulator.graph.add_node(treatment_id, type='treatment', category=category)
-            
-            # Find similar treatments for a surgery option
-            surgery_option = treatment_options[0]  # First option is surgery
-            similar_treatments = treatment_simulator._find_similar_treatments(surgery_option, pyg_data)
-            
-            # Should find 2 similar treatments (ids 1 and 2)
-            assert len(similar_treatments) == 2
-            
-            # Find similar treatments for a radiation option
-            radiation_option = treatment_options[1]  # Second option is radiation
-            similar_treatments = treatment_simulator._find_similar_treatments(radiation_option, pyg_data)
-            
-            # Should find 3 similar treatments (ids 3, 4, 5)
-            assert len(similar_treatments) == 3
-    
-    @patch('torch.stack')
-    @patch('torch.tensor')
-    def test_simulate_treatments(self, treatment_simulator, treatment_options, pyg_data):
-        """Test treatment simulation."""
-        # Instead of patching methods as modules, patch the return values
-        with patch.object(treatment_simulator, 'simulate_treatments') as mock_simulate:
-            # Set up mock return values
-            mock_results = {
-                'option_0': {
-                    'config': treatment_options[0],
-                    'response_prob': 0.75,
-                    'survival_days': 365.0,
-                    'uncertainty': 0.15
-                },
-                'option_1': {
-                    'config': treatment_options[1],
-                    'response_prob': 0.65,
-                    'survival_days': 300.0,
-                    'uncertainty': 0.20
-                }
-            }
-            mock_simulate.return_value = mock_results
-            
-            # Call the method
-            results = treatment_simulator.simulate_treatments(
-                "patient_1", "tumor_1", treatment_options[:2], pyg_data
-            )
-            
-            # Verify results
-            assert len(results) == 2
-            assert 'option_0' in results
-            assert 'option_1' in results
-            
-            # Check result structure
-            for option_id, result in results.items():
-                assert 'config' in result
-                assert 'response_prob' in result
-                assert 'survival_days' in result
-                assert 'uncertainty' in result
-    
+        # Ensure the graph used by the simulator is the fixture graph
+        treatment_simulator.graph = knowledge_graph
+
+        # Determine the actual number of treatments and their categories from the graph fixture
+        actual_treatments = {}
+        if 'treatment' in pyg_data.node_types and hasattr(pyg_data['treatment'], 'original_ids'):
+            for i, tid in enumerate(pyg_data['treatment'].original_ids):
+                # Ensure tid is string for graph lookup
+                tid_str = str(tid) if not isinstance(tid, str) else tid
+                if tid_str in knowledge_graph:
+                     actual_treatments[tid_str] = knowledge_graph.nodes[tid_str].get('category')
+                # Also handle potential integer keys if graph was built differently
+                elif isinstance(tid, int) and tid in knowledge_graph:
+                     actual_treatments[tid] = knowledge_graph.nodes[tid].get('category')
+
+
+        num_surgery = sum(1 for cat in actual_treatments.values() if cat == 'surgery')
+        num_radiation = sum(1 for cat in actual_treatments.values() if cat == 'radiation')
+
+        # Create dummy embeddings matching the actual number of treatments in pyg_data
+        num_actual_treatments = pyg_data['treatment'].num_nodes
+        # Ensure embeddings exist even if num_actual_treatments is 0
+        if num_actual_treatments > 0:
+            treatment_embeds = torch.randn(num_actual_treatments, treatment_simulator.model.hidden_channels)
+        else:
+            treatment_embeds = torch.empty((0, treatment_simulator.model.hidden_channels))
+
+        node_embeddings = {
+            'treatment': treatment_embeds
+        }
+
+
+        # Test finding surgery treatments
+        surgery_option = treatment_options[0] # category: 'surgery'
+        similar_treatments_surgery = treatment_simulator._find_similar_treatments(surgery_option, pyg_data, node_embeddings)
+        assert len(similar_treatments_surgery) == num_surgery
+        if num_surgery > 0:
+            assert all(t.shape == (treatment_simulator.model.hidden_channels,) for t in similar_treatments_surgery)
+
+        # Test finding radiation treatments
+        radiation_option = treatment_options[1] # category: 'radiation'
+        similar_treatments_radiation = treatment_simulator._find_similar_treatments(radiation_option, pyg_data, node_embeddings)
+        assert len(similar_treatments_radiation) == num_radiation
+        if num_radiation > 0:
+             assert all(t.shape == (treatment_simulator.model.hidden_channels,) for t in similar_treatments_radiation)
+
+
+        # Test for a category with no matches in graph
+        no_match_option = {'category': 'experimental'}
+        no_match_similar = treatment_simulator._find_similar_treatments(no_match_option, pyg_data, node_embeddings)
+        assert len(no_match_similar) == 0
+
+
+    @patch.object(TreatmentSimulator, '_find_similar_treatments')
+    def test_simulate_treatments(self, mock_find_similar, treatment_simulator, treatment_options, pyg_data):
+        """Test simulating outcomes for different treatments."""
+        # --- Setup Mock Model Behavior ---
+        # Create a MagicMock to replace the model instance within the simulator for this test
+        # --- Start Fix: Remove spec=GliomaGNN ---
+        mock_model_instance = MagicMock()
+        # --- End Fix ---
+        mock_model_instance.hidden_channels = treatment_simulator.model.hidden_channels # Copy hidden_channels
+        mock_model_instance.device = treatment_simulator.device # Copy device
+
+        # Mock the prediction heads
+        mock_model_instance.response_head = MagicMock(return_value=torch.tensor([[0.8]], device=treatment_simulator.device))
+        mock_model_instance.survival_head = MagicMock(return_value=torch.tensor([[500.0]], device=treatment_simulator.device))
+        mock_model_instance.uncertainty_head = MagicMock(return_value=torch.tensor([[0.1]], device=treatment_simulator.device))
+
+        # Mock the node encoder for 'treatment' (used in fallback of _find_similar_treatments)
+        mock_treatment_embedding = torch.randn(mock_model_instance.hidden_channels, device=treatment_simulator.device)
+        mock_model_instance.node_encoders = MagicMock()
+        mock_model_instance.node_encoders.__getitem__.side_effect = lambda key: MagicMock(return_value=mock_treatment_embedding) if key == 'treatment' else MagicMock()
+
+        # Configure forward directly on the mock instance
+        mock_embeddings = {
+            'patient': torch.randn(pyg_data['patient'].num_nodes, mock_model_instance.hidden_channels, device=treatment_simulator.device),
+            'tumor': torch.randn(pyg_data['tumor'].num_nodes, mock_model_instance.hidden_channels, device=treatment_simulator.device),
+            'treatment': torch.randn(pyg_data['treatment'].num_nodes, mock_model_instance.hidden_channels, device=treatment_simulator.device)
+            # Add other node types if necessary based on pyg_data
+        }
+        # Make the mock instance's forward method return the desired tuple
+        mock_model_instance.forward.return_value = (None, mock_embeddings)
+
+        # Configure the mock _find_similar_treatments (patched at class level, applied to instance)
+        mock_find_similar.return_value = [mock_embeddings['treatment'][0]] if pyg_data['treatment'].num_nodes > 0 else []
+
+        # --- Replace the simulator's model with the configured mock ---
+        original_model = treatment_simulator.model # Store original if needed later
+        treatment_simulator.model = mock_model_instance
+        treatment_simulator.model.eval = MagicMock() # Mock eval if called
+
+        # --- Run the simulation ---
+        # Use patient/tumor IDs known to be in the fixture
+        patient_id = pyg_data['patient'].original_ids[0] if pyg_data['patient'].num_nodes > 0 else "patient_1"
+        tumor_id = pyg_data['tumor'].original_ids[0] if pyg_data['tumor'].num_nodes > 0 else "tumor_1"
+
+        # Ensure patient/tumor IDs exist in the data for indexing
+        if not hasattr(pyg_data['patient'], 'original_ids') or patient_id not in pyg_data['patient'].original_ids:
+             pytest.skip(f"Patient {patient_id} not found in pyg_data fixture for simulation test.")
+        if not hasattr(pyg_data['tumor'], 'original_ids') or tumor_id not in pyg_data['tumor'].original_ids:
+             pytest.skip(f"Tumor {tumor_id} not found in pyg_data fixture for simulation test.")
+
+
+        results = treatment_simulator.simulate_treatments(patient_id, tumor_id, treatment_options, pyg_data)
+
+        # --- Assertions ---
+        assert len(results) == len(treatment_options)
+        assert 'option_0' in results
+        assert results['option_0']['response_prob'] == pytest.approx(0.8)
+        assert results['option_0']['survival_days'] == pytest.approx(500.0)
+        assert results['option_0']['uncertainty'] == pytest.approx(0.1)
+
+        # Check mocks were called
+        mock_model_instance.forward.assert_called_once() # forward should be called once on the instance
+        assert mock_find_similar.call_count == len(treatment_options)
+        # Check calls to the heads on the *mocked model instance*
+        assert mock_model_instance.response_head.call_count == len(treatment_options)
+        assert mock_model_instance.survival_head.call_count == len(treatment_options)
+        assert mock_model_instance.uncertainty_head.call_count == len(treatment_options)
+
+        # Restore original model if necessary (though test scope usually handles cleanup)
+        treatment_simulator.model = original_model
+
+
     def test_rank_treatments(self, treatment_simulator):
-        """Test ranking of treatment options based on simulated outcomes."""
-        # Create dummy simulation results
-        simulated_results = {
-            'option_0': {
-                'config': {'category': 'surgery'},
-                'response_prob': 0.8,
-                'survival_days': 500,
-                'uncertainty': 0.1
-            },
-            'option_1': {
-                'config': {'category': 'radiation'},
-                'response_prob': 0.7,
-                'survival_days': 450,
-                'uncertainty': 0.2
-            },
-            'option_2': {
-                'config': {'category': 'chemotherapy'},
-                'response_prob': 0.6,
-                'survival_days': 400,
-                'uncertainty': 0.3
-            }
+        """Test ranking treatments based on simulated outcomes."""
+        simulated_outcomes = {
+            'option_0': {'response_prob': 0.8, 'survival_days': 500, 'uncertainty': 0.1},
+            'option_1': {'response_prob': 0.7, 'survival_days': 450, 'uncertainty': 0.2},
+            'option_2': {'response_prob': 0.6, 'survival_days': 400, 'uncertainty': 0.3}
         }
-        
-        # With default weights (response and survival equally important, uncertainty penalized)
-        ranked_treatments = treatment_simulator.rank_treatments(simulated_results)
-        
-        # Expected order: option_0 (best), option_1, option_2 (worst)
-        assert ranked_treatments[0] == 'option_0'
-        assert ranked_treatments[1] == 'option_1'
-        assert ranked_treatments[2] == 'option_2'
-        
-        # With custom weights prioritizing survival
-        custom_weights = {
-            'response_prob': 0.2,
-            'survival_days': 0.7,
-            'uncertainty': -0.1
+        ranked = treatment_simulator.rank_treatments(simulated_outcomes)
+        assert ranked == ['option_0', 'option_1', 'option_2']
+
+        conflicting_outcomes = {
+            'option_A': {'response_prob': 0.9, 'survival_days': 400, 'uncertainty': 0.1},
+            'option_B': {'response_prob': 0.6, 'survival_days': 600, 'uncertainty': 0.2}
         }
-        
-        ranked_treatments = treatment_simulator.rank_treatments(simulated_results, weights=custom_weights)
-        
-        # Order should still be the same since option_0 is best in all metrics
-        assert ranked_treatments[0] == 'option_0'
-        
-        # Now test with a different scenario where the best option changes based on weights
-        simulated_results = {
-            'option_0': {
-                'config': {'category': 'surgery'},
-                'response_prob': 0.9,  # Best response
-                'survival_days': 400,  # Worst survival
-                'uncertainty': 0.2
-            },
-            'option_1': {
-                'config': {'category': 'radiation'},
-                'response_prob': 0.7,
-                'survival_days': 600,  # Best survival
-                'uncertainty': 0.2
-            }
-        }
-        
-        # With weights prioritizing response
-        response_weights = {
-            'response_prob': 0.8,
-            'survival_days': 0.2,
-            'uncertainty': 0.0
-        }
-        
-        ranked_response = treatment_simulator.rank_treatments(simulated_results, weights=response_weights)
-        
-        # Option 0 should be first (best response)
-        assert ranked_response[0] == 'option_0'
-        
-        # With weights prioritizing survival
-        survival_weights = {
-            'response_prob': 0.2,
-            'survival_days': 0.8,
-            'uncertainty': 0.0
-        }
-        
-        ranked_survival = treatment_simulator.rank_treatments(simulated_results, weights=survival_weights)
-        
-        # Option 1 should be first (best survival)
-        assert ranked_survival[0] == 'option_1'
+        ranked_default_conflict = treatment_simulator.rank_treatments(conflicting_outcomes)
+        assert ranked_default_conflict == ['option_A', 'option_B']
+
+        ranked_survival_heavy = treatment_simulator.rank_treatments(
+            conflicting_outcomes,
+            weights={'response_prob': 0.1, 'survival_days': 0.8, 'uncertainty': -0.1}
+        )
+        assert ranked_survival_heavy == ['option_B', 'option_A']

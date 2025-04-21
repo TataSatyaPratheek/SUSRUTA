@@ -1,0 +1,164 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg viewBox="0 0 800 600" xmlns="http://www.w3.org/2000/svg">
+  <!-- Background -->
+  <rect width="800" height="600" fill="#f8f9fa" />
+  
+  <!-- Title -->
+  <text x="400" y="30" font-family="Arial" font-size="20" font-weight="bold" text-anchor="middle" fill="#333">Glioma Treatment Outcome Prediction System Architecture</text>
+  
+  <!-- Data Processing Pipeline -->
+  <g>
+    <rect x="20" y="70" width="160" height="120" rx="10" fill="#e6f2ff" stroke="#0066cc" stroke-width="2" />
+    <text x="100" y="90" font-family="Arial" font-size="14" font-weight="bold" text-anchor="middle" fill="#0066cc">Data Processing</text>
+    
+    <!-- MRI Processing -->
+    <rect x="35" y="100" width="130" height="30" rx="5" fill="#ffffff" stroke="#0066cc" stroke-width="1" />
+    <text x="100" y="120" font-family="Arial" font-size="10" text-anchor="middle">Memory-Efficient MRI</text>
+    
+    <!-- Clinical Data -->
+    <rect x="35" y="140" width="130" height="30" rx="5" fill="#ffffff" stroke="#0066cc" stroke-width="1" />
+    <text x="100" y="160" font-family="Arial" font-size="10" text-anchor="middle">Clinical Data Processing</text>
+  </g>
+  
+  <!-- Knowledge Graph Construction -->
+  <g>
+    <rect x="220" y="70" width="160" height="120" rx="10" fill="#e6ffe6" stroke="#009900" stroke-width="2" />
+    <text x="300" y="90" font-family="Arial" font-size="14" font-weight="bold" text-anchor="middle" fill="#009900">Knowledge Graph</text>
+    
+    <!-- Graph Ontology -->
+    <rect x="235" y="100" width="130" height="30" rx="5" fill="#ffffff" stroke="#009900" stroke-width="1" />
+    <text x="300" y="120" font-family="Arial" font-size="10" text-anchor="middle">Graph Ontology Design</text>
+    
+    <!-- Graph Construction -->
+    <rect x="235" y="140" width="130" height="30" rx="5" fill="#ffffff" stroke="#009900" stroke-width="1" />
+    <text x="300" y="160" font-family="Arial" font-size="10" text-anchor="middle">Sparse Construction</text>
+  </g>
+  
+  <!-- GNN Model -->
+  <g>
+    <rect x="420" y="70" width="160" height="120" rx="10" fill="#fff0e6" stroke="#cc6600" stroke-width="2" />
+    <text x="500" y="90" font-family="Arial" font-size="14" font-weight="bold" text-anchor="middle" fill="#cc6600">GNN Model</text>
+    
+    <!-- Architecture -->
+    <rect x="435" y="100" width="130" height="30" rx="5" fill="#ffffff" stroke="#cc6600" stroke-width="1" />
+    <text x="500" y="120" font-family="Arial" font-size="10" text-anchor="middle">Memory-Efficient GNN</text>
+    
+    <!-- Training -->
+    <rect x="435" y="140" width="130" height="30" rx="5" fill="#ffffff" stroke="#cc6600" stroke-width="1" />
+    <text x="500" y="160" font-family="Arial" font-size="10" text-anchor="middle">Mini-batch Training</text>
+  </g>
+  
+  <!-- Treatment Analysis -->
+  <g>
+    <rect x="620" y="70" width="160" height="120" rx="10" fill="#f9e6ff" stroke="#9900cc" stroke-width="2" />
+    <text x="700" y="90" font-family="Arial" font-size="14" font-weight="bold" text-anchor="middle" fill="#9900cc">Treatment Analysis</text>
+    
+    <!-- Counterfactual -->
+    <rect x="635" y="100" width="130" height="30" rx="5" fill="#ffffff" stroke="#9900cc" stroke-width="1" />
+    <text x="700" y="120" font-family="Arial" font-size="10" text-anchor="middle">Counterfactual Reasoning</text>
+    
+    <!-- Treatment Ranking -->
+    <rect x="635" y="140" width="130" height="30" rx="5" fill="#ffffff" stroke="#9900cc" stroke-width="1" />
+    <text x="700" y="160" font-family="Arial" font-size="10" text-anchor="middle">Treatment Ranking</text>
+  </g>
+  
+  <!-- Explainability Module -->
+  <g>
+    <rect x="220" y="240" width="360" height="100" rx="10" fill="#fff6e6" stroke="#cc9900" stroke-width="2" />
+    <text x="400" y="260" font-family="Arial" font-size="14" font-weight="bold" text-anchor="middle" fill="#cc9900">Explainability Framework</text>
+    
+    <!-- Feature Attribution -->
+    <rect x="235" y="270" width="150" height="30" rx="5" fill="#ffffff" stroke="#cc9900" stroke-width="1" />
+    <text x="310" y="290" font-family="Arial" font-size="10" text-anchor="middle">Feature Attribution</text>
+    
+    <!-- Visualization -->
+    <rect x="415" y="270" width="150" height="30" rx="5" fill="#ffffff" stroke="#cc9900" stroke-width="1" />
+    <text x="490" y="290" font-family="Arial" font-size="10" text-anchor="middle">Clinical Visualizations</text>
+    
+    <!-- Memory Optimized -->
+    <text x="400" y="320" font-family="Arial" font-size="10" text-anchor="middle" fill="#cc9900">Memory-Optimized Rendering</text>
+  </g>
+  
+  <!-- Clinical Interface -->
+  <g>
+    <rect x="220" y="390" width="360" height="100" rx="10" fill="#ffe6e6" stroke="#cc0000" stroke-width="2" />
+    <text x="400" y="410" font-family="Arial" font-size="14" font-weight="bold" text-anchor="middle" fill="#cc0000">Clinical Decision Support Interface</text>
+    
+    <!-- Treatment Recommendations -->
+    <rect x="235" y="420" width="150" height="30" rx="5" fill="#ffffff" stroke="#cc0000" stroke-width="1" />
+    <text x="310" y="440" font-family="Arial" font-size="10" text-anchor="middle">Treatment Recommendations</text>
+    
+    <!-- Outcome Predictions -->
+    <rect x="415" y="420" width="150" height="30" rx="5" fill="#ffffff" stroke="#cc0000" stroke-width="1" />
+    <text x="490" y="440" font-family="Arial" font-size="10" text-anchor="middle">Outcome Predictions</text>
+    
+    <!-- Uncertainty -->
+    <text x="400" y="470" font-family="Arial" font-size="10" text-anchor="middle" fill="#cc0000">Uncertainty Quantification</text>
+  </g>
+  
+  <!-- Connections -->
+  <!-- Data Processing to Knowledge Graph -->
+  <g>
+    <line x1="180" y1="130" x2="220" y2="130" stroke="#666666" stroke-width="2" />
+    <polygon points="218,126 227,130 218,134" fill="#666666" />
+  </g>
+  
+  <!-- Knowledge Graph to GNN Model -->
+  <g>
+    <line x1="380" y1="130" x2="420" y2="130" stroke="#666666" stroke-width="2" />
+    <polygon points="418,126 427,130 418,134" fill="#666666" />
+  </g>
+  
+  <!-- GNN Model to Treatment Analysis -->
+  <g>
+    <line x1="580" y1="130" x2="620" y2="130" stroke="#666666" stroke-width="2" />
+    <polygon points="618,126 627,130 618,134" fill="#666666" />
+  </g>
+  
+  <!-- GNN Model to Explainability -->
+  <g>
+    <line x1="500" y1="190" x2="500" y2="240" stroke="#666666" stroke-width="2" />
+    <polygon points="496,238 500,247 504,238" fill="#666666" />
+  </g>
+  
+  <!-- Treatment Analysis to Explainability -->
+  <g>
+    <path d="M700,190 Q700,215 580,240" stroke="#666666" stroke-width="2" fill="none" />
+    <polygon points="579,236 577,244 585,242" fill="#666666" />
+  </g>
+  
+  <!-- Explainability to Clinical Interface -->
+  <g>
+    <line x1="400" y1="340" x2="400" y2="390" stroke="#666666" stroke-width="2" />
+    <polygon points="396,388 400,397 404,388" fill="#666666" />
+  </g>
+  
+  <!-- Memory Optimization Indicators -->
+  <g>
+    <rect x="20" y="510" width="760" height="70" rx="10" fill="#f0f0f0" stroke="#333333" stroke-width="1" />
+    <text x="400" y="530" font-family="Arial" font-size="14" font-weight="bold" text-anchor="middle" fill="#333333">Memory Optimization Techniques</text>
+    
+    <!-- Techniques -->
+    <text x="100" y="555" font-family="Arial" font-size="10" text-anchor="middle" fill="#0066cc">Patch-based MRI</text>
+    <text x="250" y="555" font-family="Arial" font-size="10" text-anchor="middle" fill="#009900">Sparse Graph Representation</text>
+    <text x="400" y="555" font-family="Arial" font-size="10" text-anchor="middle" fill="#cc6600">Mini-batch Training</text>
+    <text x="550" y="555" font-family="Arial" font-size="10" text-anchor="middle" fill="#9900cc">Incremental Updates</text>
+    <text x="700" y="555" font-family="Arial" font-size="10" text-anchor="middle" fill="#cc0000">Server-side Rendering</text>
+    
+    <!-- Memory Budget Bars -->
+    <rect x="50" y="565" width="100" height="8" rx="4" fill="#e0e0e0" stroke="#cccccc" />
+    <rect x="50" y="565" width="70" height="8" rx="4" fill="#0066cc" />
+    
+    <rect x="200" y="565" width="100" height="8" rx="4" fill="#e0e0e0" stroke="#cccccc" />
+    <rect x="200" y="565" width="50" height="8" rx="4" fill="#009900" />
+    
+    <rect x="350" y="565" width="100" height="8" rx="4" fill="#e0e0e0" stroke="#cccccc" />
+    <rect x="350" y="565" width="80" height="8" rx="4" fill="#cc6600" />
+    
+    <rect x="500" y="565" width="100" height="8" rx="4" fill="#e0e0e0" stroke="#cccccc" />
+    <rect x="500" y="565" width="40" height="8" rx="4" fill="#9900cc" />
+    
+    <rect x="650" y="565" width="100" height="8" rx="4" fill="#e0e0e0" stroke="#cccccc" />
+    <rect x="650" y="565" width="30" height="8" rx="4" fill="#cc0000" />
+  </g>
+</svg>

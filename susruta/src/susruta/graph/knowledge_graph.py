@@ -1,3 +1,4 @@
+# /Users/vi/Documents/brain/susruta/src/susruta/graph/knowledge_graph.py
 """
 Knowledge graph construction for glioma treatment data.
 
@@ -421,205 +422,153 @@ class GliomaKnowledgeGraph:
         """
         self.memory_tracker.log_memory("Start conversion to PyG")
 
-        # If node_features is None, extract from graph
-        if node_features is None:
-            node_features = {}
-            node_types: Set[str] = set()
-
-            # First pass: identify node types and collect all attribute keys per type
-            node_attr_keys: Dict[str, Set[str]] = {}
-            for node, data in self.G.nodes(data=True):
-                node_type = data.get('type', 'unknown')
-                node_types.add(node_type)
-                if node_type not in node_attr_keys:
-                    node_attr_keys[node_type] = set()
-                # Collect keys of numerical attributes
-                for key, value in data.items():
-                    if key != 'type' and isinstance(value, (int, float, np.number)) and not np.isnan(value): # Exclude NaN
-                         node_attr_keys[node_type].add(key)
-
-            # Sort attribute keys for consistent feature order
-            sorted_node_attr_keys = {nt: sorted(list(keys)) for nt, keys in node_attr_keys.items()}
-
-            # Initialize feature dictionaries for each node type
-            for node_type in node_types:
-                node_features[node_type] = {'nodes': [], 'features': []}
-
-            # Second pass: collect nodes and features by type using sorted keys
-            for node, data in self.G.nodes(data=True):
-                node_type = data.get('type', 'unknown')
-                node_features[node_type]['nodes'].append(node)
-
-                # Extract numerical features based on sorted keys
-                features = []
-                for key in sorted_node_attr_keys.get(node_type, []):
-                    value = data.get(key)
-                    # Impute missing/non-numeric/NaN with 0.0
-                    if isinstance(value, (int, float, np.number)) and not np.isnan(value):
-                        features.append(float(value))
-                    else:
-                        features.append(0.0)
-
-                # Handle nodes with NO numerical features
-                if not features and sorted_node_attr_keys.get(node_type):
-                    # If keys existed but all values were missing/non-numeric/NaN
-                    features = [0.0] * len(sorted_node_attr_keys[node_type])
-                elif not features:
-                    # If node type truly has no numerical attributes defined
-                    features = [0.0] # Assign a single default feature (dim=1)
-
-                node_features[node_type]['features'].append(features)
-
-        # Create heterogeneous PyG data object
         data = HeteroData()
+        node_id_maps: Dict[str, Dict[str, int]] = {}
+        all_node_types_in_graph = set(d.get('type', 'unknown') for _, d in self.G.nodes(data=True))
+        all_node_types_in_graph.discard('unknown') # Remove 'unknown' type
 
-        # Add node features
-        node_id_maps = {}
+        # --- START REVISED NODE FEATURE EXTRACTION ---
+        # 1. Identify all node types and their numerical attributes
+        node_attr_keys: Dict[str, Set[str]] = {nt: set() for nt in all_node_types_in_graph}
+        for node, attrs in self.G.nodes(data=True):
+            node_type = attrs.get('type')
+            if node_type in node_attr_keys:
+                for key, value in attrs.items():
+                    if key != 'type' and isinstance(value, (int, float, np.number)) and not np.isnan(value):
+                        node_attr_keys[node_type].add(key)
 
-        for node_type, type_data in node_features.items():
-            nodes = type_data['nodes']
-            features = type_data['features']
+        # Sort attribute keys for consistent feature order
+        sorted_node_attr_keys = {nt: sorted(list(keys)) for nt, keys in node_attr_keys.items()}
+        node_feature_dims = {}
 
-            # Create mapping from original node IDs to indices
-            node_id_maps[node_type] = {node: idx for idx, node in enumerate(nodes)}
+        # 2. Create node features and mappings
+        for node_type in all_node_types_in_graph:
+            nodes_of_type = [n for n, d in self.G.nodes(data=True) if d.get('type') == node_type]
+            node_id_maps[node_type] = {node: idx for idx, node in enumerate(nodes_of_type)}
+            data[node_type].original_ids = nodes_of_type
 
-            # Ensure all feature vectors have the same length for this node type
-            if features:
-                # Find feature dim based on the first non-empty feature vector if exists
-                first_valid_feature = next((f for f in features if f), None)
-                feature_dim = len(first_valid_feature) if first_valid_feature else 1 # Default to 1 if all empty or no features
-                # Ensure all vectors match this dimension, pad if necessary
-                padded_features = []
-                for f in features:
-                    current_len = len(f)
-                    if current_len < feature_dim:
-                        padded_features.append(f + [0.0] * (feature_dim - current_len))
-                    elif current_len > feature_dim:
-                         padded_features.append(f[:feature_dim]) # Truncate if longer
-                    else:
-                        padded_features.append(f)
+            features_list = []
+            feature_dim = 0
+            if nodes_of_type:
+                # Determine feature dimension based on sorted keys
+                feature_dim = len(sorted_node_attr_keys.get(node_type, []))
+                # If no numerical attributes found, assign dim 1
+                if feature_dim == 0:
+                    feature_dim = 1
+                    print(f"Warning: Node type '{node_type}' has no numerical attributes. Assigning feature dimension 1.")
 
-                # Add node features to PyG data
-                data[node_type].x = torch.tensor(padded_features, dtype=torch.float)
+                for node in nodes_of_type:
+                    attrs = self.G.nodes[node]
+                    features = []
+                    if sorted_node_attr_keys.get(node_type): # If numerical keys were defined
+                        for key in sorted_node_attr_keys[node_type]:
+                            value = attrs.get(key)
+                            if isinstance(value, (int, float, np.number)) and not np.isnan(value):
+                                features.append(float(value))
+                            else:
+                                features.append(0.0) # Impute missing/non-numeric/NaN
+                    else: # If no numerical keys, use the default [0.0]
+                        features = [0.0]
+
+                    features_list.append(features)
+
+                data[node_type].x = torch.tensor(features_list, dtype=torch.float)
             else:
-                # If no features/nodes, create empty tensor with dim 1
-                data[node_type].x = torch.empty((len(nodes), 1), dtype=torch.float) # Shape (num_nodes, 1)
+                # No nodes of this type, create empty tensor with dim 1
+                feature_dim = 1
+                data[node_type].x = torch.empty((0, feature_dim), dtype=torch.float)
 
-            # Store original node IDs
-            data[node_type].original_ids = nodes
+            node_feature_dims[node_type] = feature_dim
+            print(f"Node type '{node_type}': {len(nodes_of_type)} nodes, feature_dim={feature_dim}")
 
-        # Add edges
-        edge_types_collected: Dict[Tuple[str, str, str], Dict[str, List]] = {}
+        # --- END REVISED NODE FEATURE EXTRACTION ---
 
-        # First pass: identify all edge types and collect attribute keys
+
+        # --- START REVISED EDGE FEATURE EXTRACTION ---
+        # 1. Identify all edge types and their numerical attributes
         edge_attr_keys: Dict[Tuple[str, str, str], Set[str]] = {}
-        for u, v, edge_data in self.G.edges(data=True):
-            u_type = self.G.nodes[u].get('type', 'unknown')
-            v_type = self.G.nodes[v].get('type', 'unknown')
-            relation = edge_data.get('relation', 'connected_to')
-            edge_type = (u_type, relation, v_type)
+        valid_edge_types_in_graph: Set[Tuple[str, str, str]] = set()
+        for u, v, attrs in self.G.edges(data=True):
+            u_type = self.G.nodes[u].get('type')
+            v_type = self.G.nodes[v].get('type')
+            relation = attrs.get('relation', 'connected_to')
 
-            if edge_type not in edge_attr_keys:
-                edge_attr_keys[edge_type] = set()
-            # Collect keys of numerical attributes
-            for key, value in edge_data.items():
-                if key != 'relation' and isinstance(value, (int, float, np.number)) and not np.isnan(value): # Exclude NaN
-                    edge_attr_keys[edge_type].add(key)
+            if u_type in all_node_types_in_graph and v_type in all_node_types_in_graph:
+                edge_type = (u_type, relation, v_type)
+                valid_edge_types_in_graph.add(edge_type)
+                if edge_type not in edge_attr_keys:
+                    edge_attr_keys[edge_type] = set()
+                for key, value in attrs.items():
+                    if key != 'relation' and isinstance(value, (int, float, np.number)) and not np.isnan(value):
+                        edge_attr_keys[edge_type].add(key)
 
         # Sort attribute keys for consistent feature order
         sorted_edge_attr_keys = {et: sorted(list(keys)) for et, keys in edge_attr_keys.items()}
+        edge_feature_dims = {}
 
+        # 2. Create edge indices and features
+        edge_data_collected: Dict[Tuple[str, str, str], Dict[str, List]] = {
+            et: {'source': [], 'target': [], 'attr': []} for et in valid_edge_types_in_graph
+        }
 
-        # Second pass: collect edges by type using sorted keys
-        for u, v, edge_data in self.G.edges(data=True):
-            u_type = self.G.nodes[u].get('type', 'unknown')
-            v_type = self.G.nodes[v].get('type', 'unknown')
-            relation = edge_data.get('relation', 'connected_to')
-            edge_type = (u_type, relation, v_type)
+        for u, v, attrs in self.G.edges(data=True):
+            u_type = self.G.nodes[u].get('type')
+            v_type = self.G.nodes[v].get('type')
+            relation = attrs.get('relation', 'connected_to')
 
-            # Skip if node types not in node_id_maps (e.g., 'unknown')
-            if u_type not in node_id_maps or v_type not in node_id_maps:
-                continue
+            if u_type in node_id_maps and v_type in node_id_maps:
+                edge_type = (u_type, relation, v_type)
+                if edge_type in edge_data_collected:
+                    if u in node_id_maps[u_type] and v in node_id_maps[v_type]:
+                        source_idx = node_id_maps[u_type][u]
+                        target_idx = node_id_maps[v_type][v]
+                        edge_data_collected[edge_type]['source'].append(source_idx)
+                        edge_data_collected[edge_type]['target'].append(target_idx)
 
-            # Skip if source or target node not in respective maps (shouldn't happen if maps are correct)
-            if u not in node_id_maps[u_type] or v not in node_id_maps[v_type]:
-                continue
+                        # Extract edge features
+                        edge_features = []
+                        attr_dim = 0
+                        if sorted_edge_attr_keys.get(edge_type): # If numerical keys were defined
+                            attr_dim = len(sorted_edge_attr_keys[edge_type])
+                            for key in sorted_edge_attr_keys[edge_type]:
+                                value = attrs.get(key)
+                                if isinstance(value, (int, float, np.number)) and not np.isnan(value):
+                                    edge_features.append(float(value))
+                                else:
+                                    edge_features.append(0.0) # Impute
+                        else: # If no numerical keys, use default [1.0]
+                            attr_dim = 1
+                            edge_features = [1.0]
 
-            if edge_type not in edge_types_collected:
-                edge_types_collected[edge_type] = {'source': [], 'target': [], 'attr': []}
+                        edge_data_collected[edge_type]['attr'].append(edge_features)
+                        edge_feature_dims[edge_type] = attr_dim # Store dimension
 
-            source_idx = node_id_maps[u_type][u]
-            target_idx = node_id_maps[v_type][v]
-
-            edge_types_collected[edge_type]['source'].append(source_idx)
-            edge_types_collected[edge_type]['target'].append(target_idx)
-
-            # Extract edge attributes based on sorted keys
-            edge_features = []
-            for key in sorted_edge_attr_keys.get(edge_type, []):
-                 value = edge_data.get(key)
-                 # Impute missing/non-numeric/NaN with 0.0
-                 if isinstance(value, (int, float, np.number)) and not np.isnan(value):
-                     edge_features.append(float(value))
-                 else:
-                     edge_features.append(0.0)
-
-            # Handle edges with NO numerical features
-            if not edge_features and sorted_edge_attr_keys.get(edge_type):
-                 edge_features = [0.0] * len(sorted_edge_attr_keys[edge_type])
-            elif not edge_features:
-                 edge_features = [1.0]  # Default weight 1.0 if no attributes defined
-
-            edge_types_collected[edge_type]['attr'].append(edge_features)
-
-        # Add edge indices and attributes to PyG data
-        for edge_type, edges in edge_types_collected.items():
-            if not edges['source']:
-                continue  # Skip if no edges of this type
-
-            # Add edge indices
-            data[edge_type].edge_index = torch.tensor(
-                [edges['source'], edges['target']], dtype=torch.long)
-
-            # Ensure all edge attribute vectors have the same length for this edge type
-            edge_attrs = edges['attr']
-            if edge_attrs:
-                # Find feature dim based on the first non-empty attribute vector if exists
-                first_valid_attr = next((a for a in edge_attrs if a), None)
-                attr_dim = len(first_valid_attr) if first_valid_attr else 1 # Default to 1
+        # 3. Add to PyG data
+        for edge_type, edges in edge_data_collected.items():
+            if edges['source']:
+                data[edge_type].edge_index = torch.tensor([edges['source'], edges['target']], dtype=torch.long)
+                attr_dim = edge_feature_dims.get(edge_type, 1) # Get stored dim
+                # Ensure all attribute vectors have the correct dimension
                 padded_attrs = []
-                for a in edge_attrs:
-                    current_len = len(a)
-                    if current_len < attr_dim:
-                        padded_attrs.append(a + [0.0] * (attr_dim - current_len))
-                    elif current_len > attr_dim:
-                        padded_attrs.append(a[:attr_dim]) # Truncate
-                    else:
-                        padded_attrs.append(a)
-
-                # Add edge attributes
-                data[edge_type].edge_attr = torch.tensor(
-                    padded_attrs, dtype=torch.float)
+                for a in edges['attr']:
+                     current_len = len(a)
+                     if current_len < attr_dim:
+                         padded_attrs.append(a + [0.0] * (attr_dim - current_len))
+                     elif current_len > attr_dim:
+                         padded_attrs.append(a[:attr_dim]) # Truncate
+                     else:
+                         padded_attrs.append(a)
+                data[edge_type].edge_attr = torch.tensor(padded_attrs, dtype=torch.float)
             else:
-                 # If no attributes, create empty tensor with dim 1
-                 data[edge_type].edge_attr = torch.empty((len(edges['source']), 1), dtype=torch.float) # Shape (num_edges, 1)
+                # Add empty tensors if no edges of this type
+                attr_dim = edge_feature_dims.get(edge_type, 1)
+                data[edge_type].edge_index = torch.empty((2, 0), dtype=torch.long)
+                data[edge_type].edge_attr = torch.empty((0, attr_dim), dtype=torch.float)
+            print(f"Edge type '{edge_type}': {len(edges['source'])} edges, feature_dim={attr_dim}")
 
+        # --- END REVISED EDGE FEATURE EXTRACTION ---
 
         self.memory_tracker.log_memory("PyG conversion complete")
-
-        # Ensure all node types exist even if empty
-        all_node_types_in_graph = set(d.get('type', 'unknown') for _, d in self.G.nodes(data=True))
-        for node_type in all_node_types_in_graph:
-            if node_type != 'unknown' and node_type not in data.node_types:
-                print(f"Warning: Adding empty node type '{node_type}' to PyG data.")
-                data[node_type].x = torch.empty((0, 1), dtype=torch.float) # Shape (0, 1)
-                data[node_type].original_ids = []
-            # --- Start Fix: Ensure x exists even for empty node types ---
-            elif node_type != 'unknown' and not hasattr(data[node_type], 'x'):
-                 print(f"Warning: Adding empty 'x' tensor for node type '{node_type}' in PyG data.")
-                 data[node_type].x = torch.empty((0, 1), dtype=torch.float) # Shape (0, 1)
-            # --- End Fix ---
-
         return data
 
     def get_statistics(self) -> Dict[str, Any]:

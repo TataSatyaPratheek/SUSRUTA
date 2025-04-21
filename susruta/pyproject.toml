@@ -4,21 +4,27 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "susruta"
-version = "0.1.0"
+version = "0.1.1" # Updated version
 description = "System for Unified Graph-based Heuristic Recommendation Using Treatment Analytics"
 readme = "README.md"
 license = { file = "LICENSE" }
 authors = [
-    { name = "Your Name", email = "your.email@example.com" }
+    { name = "SUSRUTA Contributors" } # Updated author
+    # Add specific authors if desired:
+    # { name = "Your Name", email = "your.email@example.com" }
 ]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Healthcare Industry",
     "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License", # Added OSI Approved
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11", # Add newer supported versions
+    "Programming Language :: Python :: 3.12",
     "Topic :: Scientific/Engineering :: Medical Science Apps.",
+    "Operating System :: OS Independent", # Added OS classifier
 ]
 requires-python = ">=3.9"
 dependencies = [
@@ -31,16 +37,20 @@ dependencies = [
     "matplotlib>=3.6.0",
     "scikit-learn>=1.1.0",
     "psutil>=5.9.0",
+    "openpyxl>=3.0.0", # For Excel reading/writing
 ]
 
 [project.optional-dependencies]
 dev = [
     "pytest>=7.0.0",
-    "black>=22.6.0",
+    "pytest-cov>=4.0.0", # Added pytest-cov for coverage
+    "black>=23.0.0", # Updated version example
     "isort>=5.10.0",
-    "mypy>=0.971",
-    "ruff>=0.0.190",
+    "mypy>=1.0.0", # Updated version example
+    "ruff>=0.1.0", # Updated version example
     "memory-profiler>=0.60.0",
+    "types-psutil", # Added type hints for psutil
+    "types-openpyxl", # Added type hints for openpyxl
 ]
 viz = [
     "nilearn>=0.9.0",
@@ -50,28 +60,71 @@ viz = [
 [project.urls]
 "Homepage" = "https://github.com/TataSatyaPratheek/susruta"
 "Bug Tracker" = "https://github.com/TataSatyaPratheek/susruta/issues"
+"Documentation" = "https://docs.susruta.io" # Added Documentation URL
 
 [tool.setuptools]
 package-dir = {"" = "src"}
+# Add package data if necessary (e.g., non-code files included in the package)
+# include-package-data = true
+# package-data = {"susruta" = ["py.typed", "data/templates/*.txt"]}
 
 [tool.black]
 line-length = 88
-target-version = ["py39", "py310"]
+target-version = ["py39", "py310", "py311", "py312"] # Match supported versions
 include = '\.pyi?$'
+exclude = '''
+/(
+    \.git
+  | \.hg
+  | \.mypy_cache
+  | \.tox
+  | \.venv
+  | _build
+  | buck-out
+  | build
+  | dist
+)/
+'''
 
 [tool.isort]
 profile = "black"
 line_length = 88
+skip_gitignore = true # Recommended with modern isort
 
 [tool.mypy]
-python_version = "3.9"
+python_version = "3.9" # Minimum supported version
 warn_return_any = true
 warn_unused_configs = true
 disallow_untyped_defs = true
 disallow_incomplete_defs = true
+ignore_missing_imports = true # Be pragmatic, especially with complex dependencies like torch_geometric
+# Add specific module ignores if needed:
+# [[tool.mypy.overrides]]
+# module = "SimpleITK.*"
+# ignore_missing_imports = true
 
 [tool.ruff]
 line-length = 88
-target-version = "py39"
-select = ["E", "F", "B", "I"]
-ignore = []
+target-version = "py39" # Minimum supported version
+select = [
+    "E",  # pycodestyle errors
+    "W",  # pycodestyle warnings
+    "F",  # pyflakes
+    "B",  # flake8-bugbear
+    "I",  # isort
+    "C4", # flake8-comprehensions
+    "UP", # pyupgrade
+    "SIM",# flake8-simplify
+]
+ignore = [
+    "E501", # Line too long (handled by black)
+]
+# Add excludes if necessary
+# exclude = ["tests/fixtures.py"]
+
+[tool.pytest.ini_options]
+minversion = "6.0"
+addopts = "-ra -q --cov=susruta --cov-report=term-missing" # Add coverage options
+testpaths = [
+    "tests",
+]

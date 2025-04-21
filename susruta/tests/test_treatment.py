@@ -128,7 +128,7 @@ class TestTreatmentSimulator:
             # Add other node types if necessary based on pyg_data
         }
         # Make the mock instance's forward method return the desired tuple
-        mock_model_instance.forward.return_value = (None, mock_embeddings)
+        mock_model_instance.return_value = (None, mock_embeddings) # NEW - Set return value for the call
 
         # Configure the mock _find_similar_treatments (patched at class level, applied to instance)
         mock_find_similar.return_value = [mock_embeddings['treatment'][0]] if pyg_data['treatment'].num_nodes > 0 else []
@@ -160,7 +160,7 @@ class TestTreatmentSimulator:
         assert results['option_0']['uncertainty'] == pytest.approx(0.1)
 
         # Check mocks were called
-        mock_model_instance.forward.assert_called_once() # forward should be called once on the instance
+        mock_model_instance.assert_called_once() # NEW - Check the instance was called
         assert mock_find_similar.call_count == len(treatment_options)
         # Check calls to the heads on the *mocked model instance*
         assert mock_model_instance.response_head.call_count == len(treatment_options)
@@ -169,7 +169,6 @@ class TestTreatmentSimulator:
 
         # Restore original model if necessary (though test scope usually handles cleanup)
         treatment_simulator.model = original_model
-
 
     def test_rank_treatments(self, treatment_simulator):
         """Test ranking treatments based on simulated outcomes."""

@@ -13,6 +13,11 @@ import torch.nn.functional as F
 from torch_geometric.data import HeteroData
 from torch_geometric.nn import GATConv, GCNConv, SAGEConv, HeteroConv
 
+# --- START FIX: Remove circular import ---
+# Remove the following line which causes the circular import error:
+# from ..models.gnn import GliomaGNN # This line is incorrect and causes the error
+# --- END FIX ---
+
 
 class GliomaGNN(torch.nn.Module):
     """Memory-efficient GNN for glioma treatment outcome prediction."""
@@ -127,11 +132,23 @@ class GliomaGNN(torch.nn.Module):
             edge_index_dict: Dictionary of edge indices by type
 
         Returns:
-            Tuple of (predictions, node_embeddings)
+            Tuple of (predictions, node_embeddings after GNN layers)
         """
         # Store number of nodes for potential zero tensor creation
         num_nodes_dict = {nt: x.shape[0] for nt, x in x_dict.items()}
-        device = next(iter(x_dict.values())).device if x_dict else self.conv1.convs[self.edge_types[0]].lin.weight.device # Get device
+        # --- START FIX: Robust device detection ---
+        if x_dict:
+            # Get device from the first input tensor
+            device = next(iter(x_dict.values())).device
+        else:
+            # Fallback: get device from the model's parameters
+            try:
+                device = next(self.parameters()).device
+            except StopIteration:
+                # If model has no parameters (very unlikely), default to CPU
+                print("Warning: Could not determine device from input or parameters. Defaulting to CPU.")
+                device = torch.device('cpu')
+        # --- END FIX ---
 
         # Encode node features by type
         h_dict = {}
@@ -151,30 +168,53 @@ class GliomaGNN(torch.nn.Module):
 
             h_dict[node_type] = self.node_encoders[node_type](x)
 
-        # --- Start Fix: Ensure h_dict has entries for all required node types ---
+        # Ensure h_dict has entries for all required node types before conv1
         h_dict = self._ensure_input_dict(h_dict, num_nodes_dict, device)
-        # --- End Fix ---
 
-        # Apply first HeteroConv layer
-        h_dict_1 = self.conv1(h_dict, edge_index_dict)
+        # Filter edge_index_dict before conv1 (Enhanced)
+        filtered_edge_index_dict1 = {}
+        for edge_type, index in edge_index_dict.items():
+            src_type, _, dst_type = edge_type
+            # Check if BOTH types exist AND have nodes in the current feature dict
+            if src_type in h_dict and dst_type in h_dict and \
+            h_dict[src_type].shape[0] > 0 and h_dict[dst_type].shape[0] > 0:
+                filtered_edge_index_dict1[edge_type] = index
+        # Apply first HeteroConv layer using the filtered dict
+        if filtered_edge_index_dict1:
+            h_dict_1 = self.conv1(h_dict, filtered_edge_index_dict1)
+        else:
+            # If no valid edges, conv1 output is just the input features for relevant types
+            # Only copy types that were actually destinations in the original edge_types
+            dest_types_in_edges = {et[2] for et in self.edge_types}
+            h_dict_1 = {nt: h.clone() for nt, h in h_dict.items() if nt in dest_types_in_edges}
 
         # Apply activation and dropout
         h_dict_1 = {node_type: F.relu(h) for node_type, h in h_dict_1.items()}
         h_dict_1 = {node_type: F.dropout(h, p=self.dropout, training=self.training)
                 for node_type, h in h_dict_1.items()}
 
-        # --- Start Fix: Ensure h_dict_1 has entries for all required node types ---
+        # Ensure h_dict_1 has entries for all required node types before conv2
         h_dict_1 = self._ensure_input_dict(h_dict_1, num_nodes_dict, device)
-        # --- End Fix ---
 
-        # Apply second HeteroConv layer
-        h_dict_2 = self.conv2(h_dict_1, edge_index_dict)
+        # Filter edge_index_dict before conv2 (Enhanced)
+        filtered_edge_index_dict2 = {}
+        for edge_type, index in edge_index_dict.items():
+            src_type, _, dst_type = edge_type
+            # Check if BOTH types exist AND have nodes in the feature dict for this layer
+            if src_type in h_dict_1 and dst_type in h_dict_1 and \
+            h_dict_1[src_type].shape[0] > 0 and h_dict_1[dst_type].shape[0] > 0:
+                filtered_edge_index_dict2[edge_type] = index
+        # Apply second HeteroConv layer using the filtered dict
+        if filtered_edge_index_dict2:
+            h_dict_2 = self.conv2(h_dict_1, filtered_edge_index_dict2)
+        else:
+            # If no valid edges, conv2 output is just the input features for relevant types
+            dest_types_in_edges = {et[2] for et in self.edge_types}
+            h_dict_2 = {nt: h.clone() for nt, h in h_dict_1.items() if nt in dest_types_in_edges}
 
-        # Create predictions
+        # Create predictions (based on h_dict_2, as heads operate on treatment embeddings)
         predictions = {}
-
-        # Predict treatment outcomes if treatment nodes exist
-        if 'treatment' in h_dict_2:
+        if 'treatment' in h_dict_2: # Check h_dict_2 for treatment embeddings specifically
             treatment_embeddings = h_dict_2['treatment']
             if treatment_embeddings.shape[0] > 0: # Only predict if embeddings exist
                 response_pred = self.response_head(treatment_embeddings)
@@ -184,7 +224,11 @@ class GliomaGNN(torch.nn.Module):
                 uncertainty = self.uncertainty_head(treatment_embeddings)
                 predictions['uncertainty'] = uncertainty
 
+        # --- START FIX: Return h_dict_2 (embeddings after GNN layers) ---
+        # Return predictions and the embeddings dictionary after GNN layers
         return predictions, h_dict_2
+        # --- END FIX ---
+
 
     def predict(self, data: HeteroData, device: Optional[torch.device] = None) -> Dict[str, torch.Tensor]:
         """

@@ -1,14 +1,16 @@
 # SUSRUTA: System for Unified Graph-based Heuristic Recommendation Using Treatment Analytics
 
-SUSRUTA is a memory-efficient, graph-based clinical decision support system for glioma treatment outcome prediction. It processes multimodal data (MRI, clinical, genomic) to build a knowledge graph and uses Graph Neural Networks to predict treatment responses and provide personalized therapeutic recommendations.
+SUSRUTA is a memory-efficient, graph-based clinical decision support system for glioma treatment outcome prediction. It processes multimodal data (MRI, clinical, genomic, segmentation volumes, scanner metadata) to build a knowledge graph and uses Graph Neural Networks to predict treatment responses and provide personalized therapeutic recommendations.
 
 ## Features
 
 - **Memory-efficient MRI processing**: Processes large MRI volumes within 8GB RAM constraints
+- **Multimodal data integration**: Combines MRI, clinical data, segmentation volumes, and scanner metadata
 - **Heterogeneous knowledge graph construction**: Represents complex relationships between patients, tumors, treatments, and outcomes
 - **Graph neural network modeling**: Predicts treatment responses and survival outcomes
 - **Counterfactual treatment simulation**: Evaluates alternative treatment options
 - **Explainable recommendations**: Provides transparent reasoning for predictions
+- **Excel data processing**: Efficiently loads and processes clinical data, segmentation volumes, and scanner metadata from Excel files
 
 ## Installation
 

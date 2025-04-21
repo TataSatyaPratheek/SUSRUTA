@@ -61,15 +61,14 @@ class TestExplainableGliomaTreatment:
             # Simulate gradient assignment during backward mock
             # This is simplified: assumes backward is called and assigns *some* non-zero grad
             def assign_grad_effect(*args, **kwargs):
-                 input_tensor = args[0] # The tensor backward is called on
-                 if hasattr(input_tensor, 'grad_fn') and input_tensor.grad_fn is not None:
-                     # Find the treatment input tensor in the graph history (simplified)
-                     # In a real scenario, this is complex. We rely on the tested function's logic.
-                     # For the test, we just need to ensure the grad attribute exists later.
-                     if treatment_explainer.data['treatment'].x.grad is None:
-                          treatment_explainer.data['treatment'].x.grad = torch.rand_like(treatment_explainer.data['treatment'].x) * 1e-3 # Small random grads
-                     else:
-                          treatment_explainer.data['treatment'].x.grad += torch.rand_like(treatment_explainer.data['treatment'].x) * 1e-3
+                # Directly assign gradient if it's None, otherwise add to it
+                # This simulates the effect of backward() populating the grad attribute
+                if treatment_explainer.data['treatment'].x.grad is None:
+                    treatment_explainer.data['treatment'].x.grad = torch.rand_like(treatment_explainer.data['treatment'].x) * 1e-3
+                else:
+                    # Simulate accumulation if backward is called multiple times
+                    treatment_explainer.data['treatment'].x.grad += torch.rand_like(treatment_explainer.data['treatment'].x) * 1e-3
+
             mock_backward.side_effect = assign_grad_effect
 
             treatment_id = treatment_explainer.data['treatment'].original_ids[treatment_idx_to_test]
@@ -192,8 +191,11 @@ class TestExplainableGliomaTreatment:
         assert 'high confidence' in explanation_text.lower()
         assert 'uncertainty score: 0.100' in explanation_text
         # --- Start Fix: Add period to assertion ---
-        assert 'influencing response prediction: intensity (0.500), duration (0.100).' in explanation_text
-        assert 'influencing survival prediction: intensity (0.400).' in explanation_text
+        # assert 'influencing response prediction: intensity (0.500), duration (0.100).' in explanation_text # OLD
+        assert 'influencing response prediction: intensity (0.500), duration (0.100). ' in explanation_text # NEW - Added space
+        # assert 'influencing survival prediction: intensity (0.400).' in explanation_text # OLD
+        assert 'influencing survival prediction: intensity (0.400). ' in explanation_text # NEW - Added space
         # --- End Fix ---
-        assert 'Treatment details considered: duration: 1.' in explanation_text
+        # assert 'Treatment details considered: duration: 1.' in explanation_text # OLD
+        assert 'Treatment details considered: duration: 1. ' in explanation_text # NEW - Added space
         assert 'dose' not in explanation_text

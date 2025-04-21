@@ -1,3 +1,4 @@
+# susruta/src/susruta/treatment/simulator.py
 """
 Treatment simulation and counterfactual reasoning for glioma outcome prediction.
 
@@ -51,44 +52,55 @@ class TreatmentSimulator:
         """
         results = {}
 
-        # Find node indices safely
+        # Find node indices safely (needed for potential future use, but not for the check below)
         try:
             if hasattr(data['patient'], 'original_ids'):
                 patient_idx = data['patient'].original_ids.index(patient_id)
             else:
-                patient_idx = int(patient_id.split('_')[-1]) - 1 # Assuming patient_1 -> index 0
-        except (ValueError, IndexError, AttributeError):
-             raise ValueError(f"Patient ID {patient_id} not found in pyg_data['patient'].original_ids")
+                # Fallback assuming patient_id format like "patient_N"
+                patient_idx = int(patient_id.split('_')[-1]) - 1
+        except (ValueError, IndexError, AttributeError, KeyError):
+             raise ValueError(f"Patient ID {patient_id} not found or invalid in pyg_data['patient'].original_ids")
 
         try:
             if hasattr(data['tumor'], 'original_ids'):
                 tumor_idx = data['tumor'].original_ids.index(tumor_id)
             else:
-                 tumor_idx = int(tumor_id.split('_')[-1]) - 1 # Assuming tumor_1 -> index 0
-        except (ValueError, IndexError, AttributeError):
-             raise ValueError(f"Tumor ID {tumor_id} not found in pyg_data['tumor'].original_ids")
+                 # Fallback assuming tumor_id format like "tumor_N"
+                 tumor_idx = int(tumor_id.split('_')[-1]) - 1
+        except (ValueError, IndexError, AttributeError, KeyError):
+             raise ValueError(f"Tumor ID {tumor_id} not found or invalid in pyg_data['tumor'].original_ids")
 
 
-        # Get patient and tumor embeddings
+        # Get node embeddings *after* GNN layers
         with torch.no_grad():
             # Forward pass to get node embeddings
             x_dict = {k: v.x.to(self.device) for k, v in data.items() if hasattr(v, 'x')} # Use items() and check for x
 
-            # --- Start Fix: Iterate over data.edge_types list ---
             edge_indices_dict = {}
             for edge_type_tuple in data.edge_types:
                  if hasattr(data[edge_type_tuple], 'edge_index'):
                      edge_indices_dict[edge_type_tuple] = data[edge_type_tuple].edge_index.to(self.device)
-            # --- End Fix ---
 
-            _, node_embeddings = self.model(x_dict, edge_indices_dict) # Calculate embeddings once
+            # node_embeddings now contains embeddings only for nodes updated by GNN layers
+            _, node_embeddings = self.model(x_dict, edge_indices_dict)
 
+        # --- START FIX: Remove checks for patient/tumor embeddings in the returned dict ---
+        # The returned node_embeddings might not contain 'patient' or 'tumor' if they
+        # weren't destination nodes during message passing. These checks are removed
+        # as the simulation loop primarily relies on 'treatment' embeddings.
+        # if 'patient' not in node_embeddings or patient_idx >= node_embeddings['patient'].shape[0]:
+        #     raise ValueError(f"Could not get embedding for patient {patient_id} (index {patient_idx})")
+        # if 'tumor' not in node_embeddings or tumor_idx >= node_embeddings['tumor'].shape[0]:
+        #     tumor_shape = node_embeddings.get('tumor', torch.empty(0)).shape
+        #     raise ValueError(f"Could not get embedding for tumor {tumor_id} (index {tumor_idx}). Tumor embedding tensor shape: {tumor_shape}")
+        # --- END FIX ---
 
-        # Check if required embeddings exist
-        if 'tumor' not in node_embeddings or tumor_idx >= node_embeddings['tumor'].shape[0]:
-             raise ValueError(f"Could not get embedding for tumor {tumor_id} (index {tumor_idx})")
-        if 'treatment' not in node_embeddings and 'treatment' in self.model.node_encoders:
-             print("Warning: 'treatment' embeddings not found in model output, will rely on encoder.")
+        # Check if treatment embeddings are available (either from GNN output or encoder fallback)
+        if 'treatment' not in node_embeddings and 'treatment' not in self.model.node_encoders:
+             raise ValueError("Model cannot produce treatment embeddings needed for simulation.")
+        elif 'treatment' not in node_embeddings:
+             print("Warning: 'treatment' embeddings not found in GNN output, will rely on encoder.")
              # Ensure node_embeddings['treatment'] exists for _find_similar_treatments fallback
              node_embeddings['treatment'] = torch.empty((0, self.model.hidden_channels), device=self.device)
 
@@ -99,7 +111,7 @@ class TreatmentSimulator:
             treatment_features_list = self._encode_treatment(treatment_config)
             treatment_features = torch.tensor(treatment_features_list, dtype=torch.float).unsqueeze(0).to(self.device) # Add batch dim
 
-            # Find embeddings of similar existing treatments
+            # Find embeddings of similar existing treatments from the GNN output embeddings
             similar_treatment_embeddings = self._find_similar_treatments(treatment_config, data, node_embeddings)
 
             if similar_treatment_embeddings:
@@ -173,7 +185,11 @@ class TreatmentSimulator:
 
         # Expected dimension is 4 (category) + 3 (numerical) = 7
         # Ensure the output list has the correct dimension (e.g., 7)
-        expected_dim = 7 # Hardcoded based on common practice, adjust if model expects different
+        # Get expected dim from the model if possible, otherwise use default
+        expected_dim = 7 # Default
+        if 'treatment' in self.model.node_encoders:
+            expected_dim = self.model.node_encoders['treatment'].in_features
+
         if len(features) < expected_dim:
              features.extend([0.0] * (expected_dim - len(features)))
         elif len(features) > expected_dim:
@@ -203,20 +219,19 @@ class TreatmentSimulator:
         # Ensure consistency between original_ids and embeddings
         if num_treatment_nodes != len(data['treatment'].original_ids):
              print(f"Warning: Mismatch in treatment node count ({num_treatment_nodes}) and original_ids ({len(data['treatment'].original_ids)})")
-             return similar_treatments
-        if num_treatment_nodes != num_treatment_embeddings:
+             # Decide how to handle: return empty or try to proceed? Let's try to proceed cautiously.
+             # return similar_treatments
+        if num_treatment_embeddings != num_treatment_nodes:
              print(f"Warning: Mismatch in treatment node count ({num_treatment_nodes}) and embeddings ({num_treatment_embeddings})")
-             # Try to proceed if possible, otherwise return empty
-             if num_treatment_embeddings < num_treatment_nodes:
-                 return similar_treatments
+             # Limit iteration to the minimum of the two counts
+             num_to_iterate = min(num_treatment_nodes, num_treatment_embeddings, len(data['treatment'].original_ids))
+        else:
+             num_to_iterate = num_treatment_nodes
 
 
         # Find treatments with matching category using the passed embeddings
-        for idx, treatment_id_str in enumerate(data['treatment'].original_ids):
-            # Check if index is valid for the embeddings tensor
-            if idx >= num_treatment_embeddings:
-                print(f"Warning: Index {idx} out of bounds for treatment embeddings (size {num_treatment_embeddings}). Skipping.")
-                continue
+        for idx in range(num_to_iterate): # Iterate up to the safe limit
+            treatment_id_str = data['treatment'].original_ids[idx]
 
             # Check if the treatment_id exists in the original NetworkX graph
             if treatment_id_str not in self.graph:

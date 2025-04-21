@@ -1,3 +1,4 @@
+# /Users/vi/Documents/brain/susruta/examples/model_training.py
 """Example script for training the GNN model with memory efficiency."""
 
 import os
@@ -30,7 +31,7 @@ def create_synthetic_data():
         'idh_mutation': np.random.choice([0, 1], 70),
         'mgmt_methylation': np.random.choice([0, 1], 70)
     })
-    
+
     # Create synthetic treatment data
     treatments = []
     for patient_id in range(1, 71):
@@ -39,7 +40,7 @@ def create_synthetic_data():
         for i in range(num_treatments):
             treatment_id = len(treatments) + 1
             category = np.random.choice(['surgery', 'radiation', 'chemotherapy'])
-            
+
             # Add treatment specifics based on category
             if category == 'surgery':
                 treatment_name = np.random.choice(['Gross total resection', 'Subtotal resection'])
@@ -50,15 +51,15 @@ def create_synthetic_data():
             else:  # chemotherapy
                 treatment_name = np.random.choice(['Temozolomide', 'PCV', 'Bevacizumab'])
                 dose = np.random.randint(100, 200)  # mg/m²
-            
+
             duration_days = np.random.randint(1, 180)
             start_day = np.random.randint(0, 100)
-            
+
             # Add outcome
             response = np.random.choice([0, 1], p=[0.3, 0.7])  # Binary outcome for simplicity
             progression_free_days = np.random.randint(30, 1000)
             survival_days = progression_free_days + np.random.randint(0, 500)
-            
+
             treatments.append({
                 'patient_id': patient_id,
                 'treatment_id': treatment_id,
@@ -71,14 +72,14 @@ def create_synthetic_data():
                 'progression_free_days': progression_free_days,
                 'survival_days': survival_days
             })
-    
+
     treatments_df = pd.DataFrame(treatments)
-    
+
     # Create synthetic imaging features
     imaging_features = {}
     for patient_id in range(1, 71):
         patient_features = {}
-        
+
         # T1c features
         patient_features['t1c'] = {
             'mean': np.random.uniform(100, 200),
@@ -86,7 +87,7 @@ def create_synthetic_data():
             'max': np.random.uniform(200, 300),
             'volume_voxels': np.random.randint(1000, 5000)
         }
-        
+
         # T2 features
         patient_features['t2w'] = {
             'mean': np.random.uniform(150, 250),
@@ -94,7 +95,7 @@ def create_synthetic_data():
             'max': np.random.uniform(250, 350),
             'volume_voxels': np.random.randint(1000, 5000)
         }
-        
+
         # Tumor features
         patient_features['tumor'] = {
             'volume_mm3': np.random.uniform(1000, 30000),
@@ -102,9 +103,9 @@ def create_synthetic_data():
             'elongation': np.random.uniform(0.2, 0.8),
             'roundness': np.random.uniform(0.3, 0.9)
         }
-        
+
         imaging_features[patient_id] = patient_features
-    
+
     return clinical_data, treatments_df, imaging_features
 
 
@@ -112,32 +113,32 @@ def split_data_into_folds(clinical_data, treatments_df, imaging_features, test_s
     """Split data into train/val/test sets at the patient level."""
     # Get unique patient IDs
     patient_ids = clinical_data['patient_id'].unique()
-    
+
     # First split: train+val vs test
     train_val_patients, test_patients = train_test_split(
         patient_ids, test_size=test_size, random_state=random_state
     )
-    
+
     # Second split: train vs val
     train_patients, val_patients = train_test_split(
         train_val_patients, test_size=val_size/(1-test_size), random_state=random_state
     )
-    
+
     # Split clinical data
     train_clinical = clinical_data[clinical_data['patient_id'].isin(train_patients)]
     val_clinical = clinical_data[clinical_data['patient_id'].isin(val_patients)]
     test_clinical = clinical_data[clinical_data['patient_id'].isin(test_patients)]
-    
+
     # Split treatments data
     train_treatments = treatments_df[treatments_df['patient_id'].isin(train_patients)]
     val_treatments = treatments_df[treatments_df['patient_id'].isin(val_patients)]
     test_treatments = treatments_df[treatments_df['patient_id'].isin(test_patients)]
-    
+
     # Split imaging features
     train_imaging = {pid: imaging_features[pid] for pid in train_patients if pid in imaging_features}
     val_imaging = {pid: imaging_features[pid] for pid in val_patients if pid in imaging_features}
     test_imaging = {pid: imaging_features[pid] for pid in test_patients if pid in imaging_features}
-    
+
     return {
         'train': (train_clinical, train_treatments, train_imaging),
         'val': (val_clinical, val_treatments, val_imaging),
@@ -148,16 +149,16 @@ def split_data_into_folds(clinical_data, treatments_df, imaging_features, test_s
 def build_graph_for_split(clinical_data, treatments_df, imaging_features, memory_limit_mb=3000):
     """Build knowledge graph for a specific data split."""
     kg_builder = GliomaKnowledgeGraph(memory_limit_mb=memory_limit_mb)
-    
+
     # Add data to graph
     kg_builder.add_clinical_data(clinical_data)
     kg_builder.add_imaging_features(imaging_features)
     kg_builder.add_treatments(treatments_df)
     kg_builder.add_similarity_edges(threshold=0.6)
-    
+
     # Convert to PyTorch Geometric
     pyg_data = kg_builder.to_pytorch_geometric()
-    
+
     return kg_builder.G, pyg_data
 
 
@@ -167,110 +168,138 @@ def prepare_training_data(pyg_data, treatments_df):
     treatment_indices = []
     response_labels = []
     survival_labels = []
-    
+
     # Map treatment IDs to indices in PyG data
     if hasattr(pyg_data['treatment'], 'original_ids'):
         treatment_id_map = {tid: idx for idx, tid in enumerate(pyg_data['treatment'].original_ids)}
-        
+
         for _, row in treatments_df.iterrows():
             treatment_id = f"treatment_{row['treatment_id']}"
             if treatment_id in treatment_id_map:
                 treatment_indices.append(treatment_id_map[treatment_id])
                 response_labels.append(float(row['response']))
                 survival_labels.append(float(row['survival_days']))
-    
+
     # Convert to tensors
     treatment_indices = torch.tensor(treatment_indices, dtype=torch.long)
     response_labels = torch.tensor(response_labels, dtype=torch.float).view(-1, 1)
     survival_labels = torch.tensor(survival_labels, dtype=torch.float).view(-1, 1)
-    
+
     return treatment_indices, response_labels, survival_labels
 
 
-def train_epoch(model, pyg_data, treatment_indices, response_labels, survival_labels, 
+def train_epoch(model, pyg_data, treatment_indices, response_labels, survival_labels,
                optimizer, device, batch_size=16):
     """Train model for one epoch."""
     model.train()
-    
+
     # Process in mini-batches to save memory
     perm = torch.randperm(len(treatment_indices))
-    
+
     epoch_loss = 0
     num_batches = 0
-    
+
     for i in range(0, len(treatment_indices), batch_size):
         # Get batch indices
         batch_indices = perm[i:i+batch_size]
-        
+
         # Get batch data
         batch_treatment_indices = treatment_indices[batch_indices]
         batch_response_labels = response_labels[batch_indices].to(device)
         batch_survival_labels = survival_labels[batch_indices].to(device)
-        
+
         # Zero gradients
         optimizer.zero_grad()
-        
+
         # Forward pass
         predictions, _ = model(
-            {k: v.x.to(device) for k, v in pyg_data.items()},
-            {k: v.edge_index.to(device) for k, v in pyg_data.edge_types.items()}
+            {k: v.x.to(device) for k, v in pyg_data.items() if hasattr(v, 'x')}, # Check for x attribute
+            {edge_type: pyg_data[edge_type].edge_index.to(device)
+             for edge_type in pyg_data.edge_types if hasattr(pyg_data[edge_type], 'edge_index')}
         )
-        
+
+        # --- START FIX: Check if predictions exist and indices are valid ---
+        if 'response' not in predictions or 'survival' not in predictions or \
+           predictions['response'].shape[0] == 0 or \
+           batch_treatment_indices.max() >= predictions['response'].shape[0]:
+            # This can happen if the batch contained no treatment nodes or indices are out of bounds
+            # print(f"Warning: Skipping batch starting at index {i} due to missing predictions or invalid indices.")
+            continue # Skip to the next batch
+        # --- END FIX ---
+
         # Extract predictions for the batch
         batch_response_preds = predictions['response'][batch_treatment_indices]
         batch_survival_preds = predictions['survival'][batch_treatment_indices]
-        
+
         # Compute loss
         response_loss = F.binary_cross_entropy(batch_response_preds, batch_response_labels)
         survival_loss = F.mse_loss(batch_survival_preds, batch_survival_labels)
-        
+
         # Combined loss with weighting
         loss = response_loss + 0.01 * survival_loss
-        
+
         # Backward pass and optimize
         loss.backward()
         optimizer.step()
-        
+
         epoch_loss += loss.item()
         num_batches += 1
-        
+
         # Free up memory
         del batch_response_preds, batch_survival_preds, loss
         torch.cuda.empty_cache() if torch.cuda.is_available() else gc.collect()
-    
+
+    if num_batches == 0:
+         return 0.0 # Or handle as appropriate
+
     return epoch_loss / num_batches
 
 
 def evaluate(model, pyg_data, treatment_indices, response_labels, survival_labels, device):
     """Evaluate model on validation or test data."""
     model.eval()
-    
+
     with torch.no_grad():
         # Forward pass
         predictions, _ = model(
-            {k: v.x.to(device) for k, v in pyg_data.items()},
-            {k: v.edge_index.to(device) for k, v in pyg_data.edge_types.items()}
+            {k: v.x.to(device) for k, v in pyg_data.items() if hasattr(v, 'x')}, # Check for x attribute
+            {edge_type: pyg_data[edge_type].edge_index.to(device)
+             for edge_type in pyg_data.edge_types if hasattr(pyg_data[edge_type], 'edge_index')}
         )
-        
+
+        # --- START FIX: Check if predictions exist and indices are valid ---
+        if 'response' not in predictions or 'survival' not in predictions or \
+           predictions['response'].shape[0] == 0 or \
+           treatment_indices.numel() == 0 or \
+           treatment_indices.max() >= predictions['response'].shape[0]:
+            print("Warning: Skipping evaluation due to missing predictions or no/invalid treatment indices.")
+            # Return default/NaN metrics or handle appropriately
+            return {
+                'response_loss': float('nan'),
+                'survival_loss': float('nan'),
+                'response_accuracy': float('nan')
+            }
+        # --- END FIX ---
+
         # Extract predictions
         response_preds = predictions['response'][treatment_indices]
         survival_preds = predictions['survival'][treatment_indices]
-        
+
         # Compute metrics
         response_loss = F.binary_cross_entropy(
-            response_preds.to(device), 
+            response_preds.to(device),
             response_labels.to(device)
         ).item()
-        
+
         survival_loss = F.mse_loss(
-            survival_preds.to(device), 
+            survival_preds.to(device),
             survival_labels.to(device)
         ).item()
-        
+
         # Calculate accuracy for response prediction
         response_binary = (response_preds > 0.5).float()
         accuracy = (response_binary == response_labels.to(device)).float().mean().item()
-    
+
     return {
         'response_loss': response_loss,
         'survival_loss': survival_loss,
@@ -283,27 +312,27 @@ def main():
     # Initialize memory tracker
     tracker = MemoryTracker()
     tracker.log_memory("Initial")
-    
+
     print("=== GNN Model Training Example ===")
-    
+
     # Set random seeds for reproducibility
     np.random.seed(42)
     torch.manual_seed(42)
-    
+
     # Select device
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print(f"\nUsing device: {device}")
-    
+
     # Create synthetic data
     print("\nCreating synthetic data...")
     clinical_data, treatments_df, imaging_features = create_synthetic_data()
     tracker.log_memory("After data creation")
-    
+
     # Split data into train/val/test
     print("\nSplitting data into train/val/test sets...")
     data_splits = split_data_into_folds(clinical_data, treatments_df, imaging_features)
     tracker.log_memory("After data splitting")
-    
+
     # Build knowledge graph for training data
     print("\nBuilding knowledge graph for training data...")
     train_clinical, train_treatments, train_imaging = data_splits['train']
@@ -311,14 +340,14 @@ def main():
         train_clinical, train_treatments, train_imaging
     )
     tracker.log_memory("After training graph construction")
-    
+
     # Prepare training data
     print("\nPreparing training data...")
     train_indices, train_response, train_survival = prepare_training_data(
         train_pyg_data, train_treatments
     )
     tracker.log_memory("After preparing training data")
-    
+
     # Build knowledge graph for validation data
     print("\nBuilding knowledge graph for validation data...")
     val_clinical, val_treatments, val_imaging = data_splits['val']
@@ -326,60 +355,77 @@ def main():
         val_clinical, val_treatments, val_imaging
     )
     tracker.log_memory("After validation graph construction")
-    
+
     # Prepare validation data
     print("\nPreparing validation data...")
     val_indices, val_response, val_survival = prepare_training_data(
         val_pyg_data, val_treatments
     )
     tracker.log_memory("After preparing validation data")
-    
-    # Initialize model
-    print("\nInitializing GNN model...")
-    node_feature_dims = {node_type: data.x.size(1) for node_type, data in train_pyg_data.items()}
-    
-    # Initialize edge_feature_dims
+
+    # --- START FIX: Extract correct feature dimensions ---
+    print("\nExtracting feature dimensions from training data...")
+    node_feature_dims = {}
+    for node_type in train_pyg_data.node_types:
+        if hasattr(train_pyg_data[node_type], 'x') and train_pyg_data[node_type].x is not None:
+            dim = train_pyg_data[node_type].x.size(1)
+            node_feature_dims[node_type] = max(dim, 1) # Ensure dim is at least 1
+            print(f"  Node '{node_type}': dim={node_feature_dims[node_type]}")
+        else:
+            node_feature_dims[node_type] = 1 # Default dim 1 if no features
+            print(f"  Node '{node_type}': No features found, using dim=1")
+
     edge_feature_dims = {}
     for edge_type in train_pyg_data.edge_types:
-        edge_feature_dims[edge_type] = 1  # Default edge feature dimension
-    
+        if hasattr(train_pyg_data[edge_type], 'edge_attr') and train_pyg_data[edge_type].edge_attr is not None:
+            dim = train_pyg_data[edge_type].edge_attr.size(1)
+            edge_feature_dims[edge_type] = max(dim, 1) # Ensure dim is at least 1
+            print(f"  Edge '{edge_type}': dim={edge_feature_dims[edge_type]}")
+        else:
+            edge_feature_dims[edge_type] = 1 # Default dim 1 if no features
+            print(f"  Edge '{edge_type}': No features found, using dim=1")
+    # --- END FIX ---
+
+    # Initialize model
+    print("\nInitializing GNN model...")
     model = GliomaGNN(
         node_feature_dims=node_feature_dims,
         edge_feature_dims=edge_feature_dims,
         hidden_channels=32,
         dropout=0.3
     ).to(device)
-    
+    print(f"Model node encoders: {list(model.node_encoders.keys())}") # Verify encoder keys
+
     # Initialize optimizer
     optimizer = torch.optim.Adam(model.parameters(), lr=0.001, weight_decay=5e-4)
-    
+
     # Training hyperparameters
     num_epochs = 10
     batch_size = 16
-    
+
     # Training loop
     print("\nTraining model...")
     tracker.log_memory("Before training")
-    
+
     train_losses = []
     val_metrics = []
-    
+
     for epoch in range(num_epochs):
         start_time = time.time()
-        
+
         # Train for one epoch
         train_loss = train_epoch(
             model, train_pyg_data, train_indices, train_response, train_survival,
             optimizer, device, batch_size
         )
         train_losses.append(train_loss)
-        
+
         # Evaluate on validation set
         val_metric = evaluate(
             model, val_pyg_data, val_indices, val_response, val_survival, device
         )
         val_metrics.append(val_metric)
-        
+
         # Print metrics
         epoch_time = time.time() - start_time
         print(f"Epoch {epoch+1}/{num_epochs} - "
@@ -388,59 +434,59 @@ def main():
               f"Val Accuracy: {val_metric['response_accuracy']:.4f}, "
               f"Val Survival Loss: {val_metric['survival_loss']:.4f}, "
               f"Time: {epoch_time:.2f}s")
-        
+
         # Log memory
         tracker.log_memory(f"After epoch {epoch+1}")
-        
+
         # Force garbage collection
         gc.collect()
         torch.cuda.empty_cache() if torch.cuda.is_available() else None
-    
+
     # Plot training curves
     print("\nPlotting training curves...")
     plt.figure(figsize=(12, 8))
-    
+
     # Plot training loss
     plt.subplot(2, 2, 1)
     plt.plot(train_losses)
     plt.title('Training Loss')
     plt.xlabel('Epoch')
     plt.ylabel('Loss')
-    
+
     # Plot validation response loss
     plt.subplot(2, 2, 2)
     plt.plot([m['response_loss'] for m in val_metrics])
     plt.title('Validation Response Loss')
     plt.xlabel('Epoch')
     plt.ylabel('Loss')
-    
+
     # Plot validation accuracy
     plt.subplot(2, 2, 3)
     plt.plot([m['response_accuracy'] for m in val_metrics])
     plt.title('Validation Response Accuracy')
     plt.xlabel('Epoch')
     plt.ylabel('Accuracy')
-    
+
     # Plot validation survival loss
     plt.subplot(2, 2, 4)
     plt.plot([m['survival_loss'] for m in val_metrics])
     plt.title('Validation Survival Loss')
     plt.xlabel('Epoch')
     plt.ylabel('Loss')
-    
+
     plt.tight_layout()
     plt.savefig('training_curves.png')
     print("Training curves saved as 'training_curves.png'")
-    
+
     # Plot memory usage
     fig = tracker.plot_memory_usage()
     fig.savefig('training_memory.png')
     print("Memory usage plot saved as 'training_memory.png'")
-    
+
     # Save model
     torch.save(model.state_dict(), 'glioma_gnn_model.pt')
     print("Model saved as 'glioma_gnn_model.pt'")
-    
+
     print("\nModel training example completed successfully!")
 
 

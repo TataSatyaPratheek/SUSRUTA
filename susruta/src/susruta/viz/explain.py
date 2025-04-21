@@ -283,26 +283,26 @@ class ExplainableGliomaTreatment:
         else:
             uncertainty_level = "low confidence (high uncertainty)"
 
-        explanation_text += f"The model prediction has {uncertainty_level} (uncertainty score: {uncertainty:.3f})." # Added period
+            explanation_text += f"The model prediction has {uncertainty_level} (uncertainty score: {uncertainty:.3f})." # Keep period
 
         if response_features:
             explanation_text += "\n\nKey factors influencing the response prediction: "
             feature_strs = [f"{feature} ({importance:.3f})" for feature, importance in response_features]
-            explanation_text += ", ".join(feature_strs) + "."
+            explanation_text += ", ".join(feature_strs) + ". " # ADD SPACE
 
         if survival_features:
             explanation_text += "\nKey factors influencing the survival prediction: "
             feature_strs = [f"{feature} ({importance:.3f})" for feature, importance in survival_features]
-            explanation_text += ", ".join(feature_strs) + "."
+            explanation_text += ", ".join(feature_strs) + ". " # ADD SPACE
 
         details = []
         for key, value in treatment_attrs.items():
             if key not in ['type', 'category', 'name'] and value is not None:
-                 if isinstance(value, (float, np.float32)):
-                     details.append(f"{key}: {value:.1f}")
-                 else:
-                     details.append(f"{key}: {value}")
+                if isinstance(value, (float, np.float32)):
+                    details.append(f"{key}: {value:.1f}")
+                else:
+                    details.append(f"{key}: {value}")
         if details:
-             explanation_text += "\n\nTreatment details considered: " + ", ".join(details) + "."
+            explanation_text += "\n\nTreatment details considered: " + ", ".join(details) + ". " # ADD SPACE
 
         return explanation_text.strip()

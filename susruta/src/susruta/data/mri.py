@@ -60,7 +60,9 @@ class EfficientMRIProcessor:
         
         # Convert to binary mask if needed
         if mask.GetPixelID() != sitk.sitkUInt8:
-            binary_mask = mask > 0
+            # Use BinaryThreshold instead of direct comparison
+            binary_mask = sitk.BinaryThreshold(mask, lowerThreshold=0, upperThreshold=0, 
+                                            insideValue=0, outsideValue=1)
         else:
             binary_mask = mask
         

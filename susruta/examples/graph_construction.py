@@ -165,10 +165,10 @@ def main():
     tracker.log_memory("After PyG conversion")
     
     print("\nPyTorch Geometric Data Statistics:")
-    for node_type in pyg_data.node_types():
+    for node_type in pyg_data.node_types:
         print(f"  {node_type} nodes: {pyg_data[node_type].x.shape[0]}")
     
-    for edge_type in pyg_data.edge_types():
+    for edge_type in pyg_data.edge_types:
         print(f"  {edge_type} edges: {pyg_data[edge_type].edge_index.shape[1]}")
     
     # Plot memory usage

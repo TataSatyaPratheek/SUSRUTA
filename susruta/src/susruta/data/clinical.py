@@ -140,7 +140,7 @@ class ClinicalDataProcessor:
         
         # Skip ID columns or timestamp columns
         numerical_cols = [col for col in numerical_cols 
-                         if not col.endswith('_id') and 'date' not in col.lower()]
+                        if not col.endswith('_id') and 'date' not in col.lower()]
         
         if numerical_cols:
             if 'numerical' not in self.numerical_scalers:
@@ -148,8 +148,12 @@ class ClinicalDataProcessor:
                 self.numerical_scalers['numerical'] = StandardScaler()
                 self.numerical_scalers['numerical'].fit(df[numerical_cols])
             
-            # Transform the columns
-            df.loc[:, numerical_cols] = self.numerical_scalers['numerical'].transform(df[numerical_cols])
+            # Transform the columns using DataFrame constructor to avoid dtype warning
+            df.loc[:, numerical_cols] = pd.DataFrame(
+                self.numerical_scalers['numerical'].transform(df[numerical_cols].values),
+                index=df.index,
+                columns=numerical_cols
+            )
         
         return df
     
@@ -274,14 +278,34 @@ class ClinicalDataProcessor:
                             # Set the feature value for this patient
                             integrated_df.loc[integrated_df['patient_id'] == patient_id, col_name] = features[feature]
         
+        # Ensure tumor features are properly added with prefix
+        for patient_id in patient_ids:
+            if patient_id in imaging_features and 'tumor' in imaging_features[patient_id]:
+                tumor_features = imaging_features[patient_id]['tumor']
+                for feature, value in tumor_features.items():
+                    col_name = f"tumor_{feature}"
+                    if col_name not in integrated_df.columns:
+                        integrated_df[col_name] = None
+                    
+                    # Set the feature value for this patient
+                    integrated_df.loc[integrated_df['patient_id'] == patient_id, col_name] = value
+
         # Impute missing imaging features
         imaging_cols = [col for col in integrated_df.columns if any(seq in col for seq in ['t1c', 't1n', 't2f', 't2w', 'tumor'])]
         
         if imaging_cols:
             if 'imaging' not in self.imputers:
                 self.imputers['imaging'] = KNNImputer(n_neighbors=3)
-                self.imputers['imaging'].fit(integrated_df[imaging_cols].fillna(0))
+                filled_df = integrated_df[imaging_cols].copy()
+                filled_df = filled_df.fillna(0)
+                # Explicitly handle downcasting
+                filled_df = filled_df.infer_objects()
+                self.imputers['imaging'].fit(filled_df)
             
-            integrated_df.loc[:, imaging_cols] = self.imputers['imaging'].transform(integrated_df[imaging_cols].fillna(0))
+            filled_df = integrated_df[imaging_cols].copy()
+            filled_df = filled_df.fillna(0)
+            filled_df = filled_df.infer_objects()
+            integrated_df.loc[:, imaging_cols] = self.imputers['imaging'].transform(filled_df)
+
         
         return integrated_df

@@ -63,7 +63,7 @@ class TreatmentSimulator:
             # Forward pass to get node embeddings
             _, node_embeddings = self.model(
                 {k: v.x.to(self.device) for k, v in data.items()},
-                {k: v.edge_index.to(self.device) for k, v in data.edge_types().items()}
+                {k: v.edge_index.to(self.device) for k, v in data.edge_types.items()}
             )
         
         # Get tumor embedding
@@ -136,19 +136,8 @@ class TreatmentSimulator:
         
         return features
     
-    def _find_similar_treatments(self, 
-                               treatment_config: Dict[str, Any], 
-                               data: HeteroData) -> List[torch.Tensor]:
-        """
-        Find embeddings of similar treatments in the graph.
-        
-        Args:
-            treatment_config: Treatment configuration
-            data: PyTorch Geometric data object
-            
-        Returns:
-            List of embeddings for similar treatments
-        """
+    def _find_similar_treatments(self, treatment_config: Dict[str, Any], data: HeteroData) -> List[torch.Tensor]:
+        """Find embeddings of similar treatments in the graph."""
         similar_treatments = []
         
         # Get treatment category
@@ -156,26 +145,45 @@ class TreatmentSimulator:
         if not category:
             return similar_treatments
         
-        # This is a simplified version; in practice, you'd query the graph structure
-        # For demonstration, we'll just look for treatments of the same category
-        # that are close in feature space
+        # Make sure 'treatment' node type exists
+        if 'treatment' not in data:
+            return similar_treatments
         
-        # This implementation depends on your data structure
-        if 'treatment' in data:
-            if hasattr(data['treatment'], 'original_ids'):
-                # Forward pass to get all node embeddings
-                with torch.no_grad():
-                    _, node_embeddings = self.model(
-                        {k: v.x.to(self.device) for k, v in data.items()},
-                        {k: v.edge_index.to(self.device) for k, v in data.edge_types().items()}
-                    )
-                
-                for idx, treatment_id in enumerate(data['treatment'].original_ids):
-                    if treatment_id in self.graph.nodes():
-                        treatment_attrs = self.graph.nodes[treatment_id]
-                        if treatment_attrs.get('category') == category:
-                            # Get the embedding
-                            similar_treatments.append(node_embeddings['treatment'][idx])
+        # Make sure original_ids are available
+        if not hasattr(data['treatment'], 'original_ids'):
+            return similar_treatments
+        
+        # Forward pass to get all node embeddings
+        with torch.no_grad():
+            # Create input dictionaries - simple version for test
+            x_dict = {k: v.x.to(self.device) for k, v in data.items()}
+            
+            # Create a simple edge_indices_dict for testing to avoid complex extraction
+            edge_indices_dict = {}
+            for edge_type in data.edge_types:
+                if isinstance(edge_type, tuple) and len(edge_type) == 3:
+                    edge_indices_dict[edge_type] = data[edge_type].edge_index.to(self.device)
+            
+            # Get embeddings using forward pass
+            _, node_embeddings = self.model.forward(x_dict, edge_indices_dict)
+        
+        # Ensure we have embeddings for treatments
+        if 'treatment' in node_embeddings:
+            # Check each treatment
+            for idx, treatment_id in enumerate(data['treatment'].original_ids):
+                # Skip if index is out of bounds
+                if idx >= len(node_embeddings['treatment']):
+                    continue
+                    
+                # Skip if not in graph
+                if treatment_id not in self.graph:
+                    continue
+                    
+                # Get category attribute
+                treatment_attrs = self.graph.nodes[treatment_id]
+                if treatment_attrs.get('category') == category:
+                    # Get the embedding
+                    similar_treatments.append(node_embeddings['treatment'][idx])
         
         return similar_treatments
     

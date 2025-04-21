@@ -908,7 +908,7 @@ class TreatmentSimulator:
             # Forward pass to get node embeddings
             _, node_embeddings = self.model(
                 {k: v.x.to(self.device) for k, v in data.items()},
-                {k: v.edge_index.to(self.device) for k, v in data.edge_types().items()}
+                {k: v.edge_index.to(self.device) for k, v in data.edge_types.items()}
             )
         
         # Get tumor embedding
@@ -997,7 +997,7 @@ class TreatmentSimulator:
                                 # Forward pass to get node embeddings
                                 _, node_embeddings = self.model(
                                     {k: v.x.to(self.device) for k, v in data.items()},
-                                    {k: v.edge_index.to(self.device) for k, v in data.edge_types().items()}
+                                    {k: v.edge_index.to(self.device) for k, v in data.edge_types.items()}
                                 )
                             
                             similar_treatments.append(node_embeddings['treatment'][idx])
@@ -1035,7 +1035,7 @@ class ExplainableGliomaTreatment:
         output_dict, _ = self.model(
             {k: v.x.to(self.device) if k != 'treatment' else torch.stack([x])
              for k, v in self.data.items()},
-            {k: v.edge_index.to(self.device) for k, v in self.data.edge_types().items()}
+            {k: v.edge_index.to(self.device) for k, v in self.data.edge_types.items()}
         )
         
         # Extract predictions
@@ -1241,7 +1241,7 @@ def main():
     
     # Get edge types
     edge_feature_dims = {}
-    for edge_type in pyg_data.edge_types():
+    for edge_type in pyg_data.edge_types:
         # Extract node types from edge type
         src_type, edge_name, dst_type = edge_type
         edge_feature_dims[edge_type] = 1  # Simplified for demo
@@ -1260,7 +1260,7 @@ def main():
     for key in pyg_data.keys():
         pyg_data[key].x = pyg_data[key].x.to(device)
     
-    for edge_type in pyg_data.edge_types():
+    for edge_type in pyg_data.edge_types:
         pyg_data[edge_type].edge_index = pyg_data[edge_type].edge_index.to(device)
     
     model.train()
@@ -1270,7 +1270,7 @@ def main():
         # Forward pass
         predictions, _ = model(
             {k: v.x for k, v in pyg_data.items()},
-            {k: v.edge_index for k, v in pyg_data.edge_types().items()}
+            {k: v.edge_index for k, v in pyg_data.edge_types.items()}
         )
         
         # Create dummy targets for demo (replace with real targets in production)

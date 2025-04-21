@@ -218,7 +218,7 @@ class TestGliomaKnowledgeGraph:
                 node_types.add(attrs['type'])
         
         for node_type in node_types:
-            assert node_type in pyg_data.node_types()
+            assert node_type in pyg_data.node_types
         
         # Check that edge types from the graph are present in PyG data
         edge_types = set()
@@ -231,8 +231,8 @@ class TestGliomaKnowledgeGraph:
         for edge_type in edge_types:
             # Some edge types might be filtered out during conversion
             # (e.g., if source or target nodes were filtered)
-            if edge_type[0] in pyg_data.node_types() and edge_type[2] in pyg_data.node_types():
-                assert edge_type in pyg_data.edge_types() or edge_type not in edge_types
+            if edge_type[0] in pyg_data.node_types and edge_type[2] in pyg_data.node_types:
+                assert edge_type in pyg_data.edge_types or edge_type not in edge_types
     
     def test_get_statistics(self, knowledge_graph):
         """Test getting graph statistics."""

@@ -213,7 +213,7 @@ def train_epoch(model, pyg_data, treatment_indices, response_labels, survival_la
         # Forward pass
         predictions, _ = model(
             {k: v.x.to(device) for k, v in pyg_data.items()},
-            {k: v.edge_index.to(device) for k, v in pyg_data.edge_types().items()}
+            {k: v.edge_index.to(device) for k, v in pyg_data.edge_types.items()}
         )
         
         # Extract predictions for the batch
@@ -249,7 +249,7 @@ def evaluate(model, pyg_data, treatment_indices, response_labels, survival_label
         # Forward pass
         predictions, _ = model(
             {k: v.x.to(device) for k, v in pyg_data.items()},
-            {k: v.edge_index.to(device) for k, v in pyg_data.edge_types().items()}
+            {k: v.edge_index.to(device) for k, v in pyg_data.edge_types.items()}
         )
         
         # Extract predictions
@@ -340,7 +340,7 @@ def main():
     
     # Initialize edge_feature_dims
     edge_feature_dims = {}
-    for edge_type in train_pyg_data.edge_types():
+    for edge_type in train_pyg_data.edge_types:
         edge_feature_dims[edge_type] = 1  # Default edge feature dimension
     
     model = GliomaGNN(

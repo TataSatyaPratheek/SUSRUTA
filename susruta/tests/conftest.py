@@ -173,7 +173,7 @@ def gnn_model(pyg_data):
     
     # Initialize edge_feature_dims
     edge_feature_dims = {}
-    for edge_type in pyg_data.edge_types():
+    for edge_type in pyg_data.edge_types:
         edge_feature_dims[edge_type] = 1  # Default edge feature dimension
     
     # Create model

@@ -298,7 +298,8 @@ class GliomaKnowledgeGraph:
         
         return features
     
-    def _calculate_similarity(self, features1: Dict[str, float], features2: Dict[str, float]) -> float:
+
+    def _calculate_similarity(self, features1: Dict[str, Any], features2: Dict[str, Any]) -> float:
         """
         Calculate cosine similarity between feature dictionaries.
         
@@ -315,9 +316,20 @@ class GliomaKnowledgeGraph:
         if not common_features:
             return 0.0
         
+        # Filter for numeric features only
+        numeric_features = []
+        for f in common_features:
+            val1 = features1.get(f, 0)
+            val2 = features2.get(f, 0)
+            if isinstance(val1, (int, float)) and isinstance(val2, (int, float)):
+                numeric_features.append(f)
+        
+        if not numeric_features:
+            return 0.0
+        
         # Calculate cosine similarity
-        vec1 = np.array([features1.get(f, 0) for f in common_features])
-        vec2 = np.array([features2.get(f, 0) for f in common_features])
+        vec1 = np.array([float(features1.get(f, 0)) for f in numeric_features])
+        vec2 = np.array([float(features2.get(f, 0)) for f in numeric_features])
         
         norm1 = np.linalg.norm(vec1)
         norm2 = np.linalg.norm(vec2)
@@ -336,11 +348,12 @@ class GliomaKnowledgeGraph:
         """
         # Convert node attribute dictionaries to use smaller data types
         for node, attrs in self.G.nodes(data=True):
-            for key, value in attrs.items():
+            for key, value in list(attrs.items()):  # Create a copy of items to avoid modification during iteration
                 if isinstance(value, float):
                     attrs[key] = np.float32(value)  # Use 32-bit floats instead of 64-bit
-                elif isinstance(value, int):
-                    attrs[key] = np.int32(value)  # Use 32-bit ints
+                elif isinstance(value, int) or isinstance(value, np.int64):
+                    # Explicitly handle both Python int and numpy int64
+                    attrs[key] = np.int32(int(value))  # Ensure conversion to int32
         
         # Force garbage collection
         gc.collect()

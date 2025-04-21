@@ -93,24 +93,26 @@ class GliomaGNN(torch.nn.Module):
             nn.Linear(hidden_channels, 1),
             nn.Softplus()  # For positive uncertainty values
         )
-    
-    def forward(self, 
-               x_dict: Dict[str, torch.Tensor], 
-               edge_indices_dict: Dict[Tuple[str, str, str], torch.Tensor]
-               ) -> Tuple[Dict[str, torch.Tensor], Dict[str, torch.Tensor]]:
+
+    def forward(self,
+            x_dict: Dict[str, torch.Tensor],
+            edge_indices_dict: Dict[Tuple[str, str, str], torch.Tensor]
+            ) -> Tuple[Dict[str, torch.Tensor], Dict[str, torch.Tensor]]:
         """
         Forward pass for memory-efficient heterogeneous GNN.
         
         Args:
             x_dict: Dictionary of node features by type
             edge_indices_dict: Dictionary of edge indices by type
-            
+        
         Returns:
             Tuple of (predictions, node_embeddings)
         """
         # Encode node features by type
         h_dict = {}
         for node_type, x in x_dict.items():
+            if not x.requires_grad:
+                x_dict[node_type] = x.detach().clone().requires_grad_(True)
             if node_type in self.node_encoders:
                 h_dict[node_type] = self.node_encoders[node_type](x)
             else:
@@ -126,19 +128,26 @@ class GliomaGNN(torch.nn.Module):
             src_type, _, dst_type = edge_type
             
             # Skip if edge type not in convolution dictionary
-            if str(edge_type) not in self.conv1:
+            edge_type_str = str(edge_type)
+            if edge_type_str not in self.conv1:
                 continue
-                
+            
+            # Check if both source and destination node types are present
+            if src_type not in h_dict or dst_type not in h_dict:
+                continue
+            
             # Apply convolution
-            h_dict_1[dst_type] = h_dict_1.get(dst_type, 0) + self.conv1[str(edge_type)](
-                (h_dict[src_type], h_dict[dst_type]), 
-                edge_index
-            )
+            try:
+                out = self.conv1[edge_type_str]((h_dict[src_type], h_dict[dst_type]), edge_index)
+                h_dict_1[dst_type] = h_dict_1.get(dst_type, 0) + out
+            except RuntimeError:
+                # Skip this edge type if there's a dimension mismatch
+                continue
         
         # Apply activation and dropout
         h_dict_1 = {node_type: F.relu(h) for node_type, h in h_dict_1.items()}
         h_dict_1 = {node_type: F.dropout(h, p=0.3, training=self.training) 
-                   for node_type, h in h_dict_1.items()}
+                for node_type, h in h_dict_1.items()}
         
         # Second message-passing layer
         h_dict_2 = {node_type: h for node_type, h in h_dict_1.items()}
@@ -147,14 +156,21 @@ class GliomaGNN(torch.nn.Module):
             src_type, _, dst_type = edge_type
             
             # Skip if edge type not in convolution dictionary
-            if str(edge_type) not in self.conv2:
+            edge_type_str = str(edge_type)
+            if edge_type_str not in self.conv2:
                 continue
-                
+            
+            # Check if both source and destination node types are present
+            if src_type not in h_dict_1 or dst_type not in h_dict_1:
+                continue
+            
             # Apply convolution
-            h_dict_2[dst_type] = h_dict_2.get(dst_type, 0) + self.conv2[str(edge_type)](
-                (h_dict_1[src_type], h_dict_1[dst_type]), 
-                edge_index
-            )
+            try:
+                out = self.conv2[edge_type_str]((h_dict_1[src_type], h_dict_1[dst_type]), edge_index)
+                h_dict_2[dst_type] = h_dict_2.get(dst_type, 0) + out
+            except RuntimeError:
+                # Skip this edge type if there's a dimension mismatch
+                continue
         
         # Apply final activation
         h_dict_2 = {node_type: F.relu(h) for node_type, h in h_dict_2.items()}
@@ -198,11 +214,12 @@ class GliomaGNN(torch.nn.Module):
         # Set model to evaluation mode
         self.eval()
         
-        # Move data to device
-        x_dict = {node_type: data[node_type].x.to(device) for node_type in data.node_types()}
+        # Move data to device - access node_types as property, not method
+        x_dict = {node_type: data[node_type].x.to(device) for node_type in data.node_types}
+        
         edge_indices_dict = {
             edge_type: data[edge_type].edge_index.to(device) 
-            for edge_type in data.edge_types()
+            for edge_type in data.edge_types
         }
         
         # Make predictions

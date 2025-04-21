@@ -59,9 +59,10 @@ class ExplainableGliomaTreatment:
         x_dict = {k: v.x.to(self.device) if k != 'treatment' else torch.stack([x])
                  for k, v in self.data.items()}
         
-        edge_indices_dict = {k: v.edge_index.to(self.device) 
-                            for k, v in self.data.edge_types().items()}
-        
+        edge_indices_dict = {}
+        for edge_type in self.data.edge_types:
+            edge_indices_dict[edge_type] = self.data[edge_type].edge_index.to(self.device)
+            
         # Forward pass
         output_dict, _ = self.model(x_dict, edge_indices_dict)
         
@@ -212,7 +213,7 @@ class ExplainableGliomaTreatment:
         explanation_text += f"probability of positive response, with an estimated survival of {survival_days:.0f} days. "
         
         # Add uncertainty information
-        if uncertainty < 0.1:
+        if uncertainty <= 0.1:
             uncertainty_level = "high confidence"
         elif uncertainty < 0.3:
             uncertainty_level = "moderate confidence"

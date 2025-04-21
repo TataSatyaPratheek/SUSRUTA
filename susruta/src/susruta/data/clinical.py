@@ -79,8 +79,10 @@ class ClinicalDataProcessor:
         categorical_cols = df.select_dtypes(include=['object', 'category']).columns.tolist()
         
         for col in categorical_cols:
-            mode_value = df[col].mode().iloc[0] if not df[col].mode().empty else None
-            df[col].fillna(mode_value, inplace=True)
+            if df[col].isna().any():
+                mode_value = df[col].mode().iloc[0] if not df[col].mode().empty else None
+                # Fix: Use pandas Series replacement method without inplace
+                df[col] = df[col].fillna(mode_value)
         
         return df
     
@@ -103,8 +105,8 @@ class ClinicalDataProcessor:
         
         for col in categorical_cols:
             if col not in self.categorical_encoders:
-                # Initialize and fit encoder
-                self.categorical_encoders[col] = OneHotEncoder(sparse=False, handle_unknown='ignore')
+                # Fix: Update to use sparse_output instead of sparse
+                self.categorical_encoders[col] = OneHotEncoder(sparse_output=False, handle_unknown='ignore')
                 self.categorical_encoders[col].fit(df[[col]])
             
             # Transform the column
@@ -189,7 +191,8 @@ class ClinicalDataProcessor:
         # Encode treatment categories
         if 'category' in df.columns:
             if 'treatment_category' not in self.categorical_encoders:
-                self.categorical_encoders['treatment_category'] = OneHotEncoder(sparse=False, handle_unknown='ignore')
+                # Fix: Update to use sparse_output instead of sparse
+                self.categorical_encoders['treatment_category'] = OneHotEncoder(sparse_output=False, handle_unknown='ignore')
                 self.categorical_encoders['treatment_category'].fit(df[['category']])
             
             # Transform treatment category
@@ -209,7 +212,10 @@ class ClinicalDataProcessor:
         
         # Compute cumulative dose if dose and duration are available
         if 'dose' in df.columns and 'duration_days' in df.columns:
-            df['cumulative_dose'] = df['dose'] * df['duration_days']
+            # Handle null values in dose to avoid warnings
+            dose_values = df['dose'].copy()
+            dose_values = pd.to_numeric(dose_values, errors='coerce')
+            df['cumulative_dose'] = dose_values * df['duration_days']
         
         return df
     

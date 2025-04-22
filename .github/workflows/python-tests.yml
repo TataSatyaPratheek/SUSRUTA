@@ -45,7 +45,9 @@ jobs:
           # Install the package itself along with BOTH dev and viz dependencies
           # Also install nibabel explicitly
           # torch-geometric should now pick up the installed CPU torch version
+          cd susruta
           pip install .[dev,viz] nibabel
+          cd ..
 
 
       # Runs the tests using pytest with coverage

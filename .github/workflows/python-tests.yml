@@ -38,8 +38,15 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          # Install the package itself along with development dependencies (pytest, pytest-cov, etc.)
-          pip install .[dev]
+          # Install CPU version of PyTorch first (more robust for CI)
+          # Find the correct command for your desired torch version from pytorch.org if needed
+          pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu
+
+          # Install the package itself along with BOTH dev and viz dependencies
+          # Also install nibabel explicitly
+          # torch-geometric should now pick up the installed CPU torch version
+          pip install .[dev,viz] nibabel
+
 
       # Runs the tests using pytest with coverage
       - name: Run tests with pytest

@@ -177,24 +177,13 @@ class TreatmentSimulator:
             category_vec[categories.index(cat)] = 1.0
         features.extend(category_vec)
 
-        # Encode numerical features (dose, duration, intensity) - Assuming these 3 exist
-        # Use 0.0 for missing values
-        features.append(float(treatment_config.get('dose', 0.0) or 0.0)) # Handle None from DB
-        features.append(float(treatment_config.get('duration', 0.0) or 0.0))
-        features.append(float(treatment_config.get('intensity', 0.0) or 0.0))
-
-        # Expected dimension is 4 (category) + 3 (numerical) = 7
-        # Ensure the output list has the correct dimension (e.g., 7)
-        # Get expected dim from the model if possible, otherwise use default
-        expected_dim = 7 # Default
-        if 'treatment' in self.model.node_encoders:
-            expected_dim = self.model.node_encoders['treatment'].in_features
-
-        if len(features) < expected_dim:
-             features.extend([0.0] * (expected_dim - len(features)))
-        elif len(features) > expected_dim:
-             features = features[:expected_dim]
-
+        # --- START FIX: Encode only dose, duration, intensity ---
+        numerical_keys = ['dose', 'duration', 'intensity'] # 3 numerical features
+        for key in numerical_keys:
+            value = treatment_config.get(key, 0.0)
+            # Ensure value is treated as float, handle None explicitly
+            features.append(float(value if value is not None else 0.0))
+        # --- END FIX ---
         return features
 
     def _find_similar_treatments(self,

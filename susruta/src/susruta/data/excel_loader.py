@@ -428,11 +428,20 @@ class ExcelDataLoader:
             # Categorize tumors by volume
             tumor_vol_col = next((col for col in vol_cols if 'tumor' in col.lower()), None)
             if tumor_vol_col:
-                df['tumor_size_category'] = pd.qcut(
-                    df[tumor_vol_col].clip(lower=0), 
-                    q=3, 
-                    labels=['small', 'medium', 'large']
-                )
+                try: # <-- START try-except block
+                    df['tumor_size_category'] = pd.qcut(
+                        df[tumor_vol_col].clip(lower=0),
+                        q=3,
+                        labels=['small', 'medium', 'large'],
+                        duplicates='drop'
+                    )
+                except ValueError as e: # <-- Catch the specific error
+                    # Handle cases where qcut fails (e.g., too few unique values)
+                    logger.warning(f"Could not create tumor size category due to qcut error: {e}. Assigning 'unknown'.")
+                    df['tumor_size_category'] = 'unknown' # Assign a default value
+                    # Optionally convert to categorical type if needed elsewhere
+                    df['tumor_size_category'] = df['tumor_size_category'].astype('category')
+                # <-- END try-except block
         
         # Calculate combined risk score if relevant features exist
         risk_features = ['age', 'karnofsky_score', 'grade', 'idh_mutation', 'mgmt_methylation']

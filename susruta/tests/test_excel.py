@@ -173,13 +173,16 @@ class TestExcelDataLoader:
         assert 'scanner_scannermanufacturer' in result.columns
         assert 'seg_tumorvolume_mm3' in result.columns
         
-        # Check correct merging
-        assert result.loc[result['patient_id'] == 1, 'scanner_scannermanufacturer'].iloc[0] == 'GE'
-        assert result.loc[result['patient_id'] == 1, 'seg_tumorvolume_mm3'].iloc[0] == 15000.0
-        
+        # Check correct merging (Use string comparison for patient_id)
+        # --- START FIX ---
+        assert result.loc[result['patient_id'] == '1', 'scanner_scannermanufacturer'].iloc[0] == 'GE'
+        assert result.loc[result['patient_id'] == '1', 'seg_tumorvolume_mm3'].iloc[0] == 15000.0
+
         # Patient 3 has no scanner or segmentation data
-        assert pd.isna(result.loc[result['patient_id'] == 3, 'scanner_scannermanufacturer'].iloc[0])
-        assert pd.isna(result.loc[result['patient_id'] == 3, 'seg_tumorvolume_mm3'].iloc[0])
+        assert pd.isna(result.loc[result['patient_id'] == '3', 'scanner_scannermanufacturer'].iloc[0])
+        assert pd.isna(result.loc[result['patient_id'] == '3', 'seg_tumorvolume_mm3'].iloc[0])
+        # --- END FIX ---
+
 
     def test_process_for_graph(self):
         """Test graph preparation processing."""

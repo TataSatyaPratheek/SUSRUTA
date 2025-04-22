@@ -11,7 +11,7 @@ license = { file = "LICENSE" }
 authors = [
     { name = "SUSRUTA Contributors" } # Updated author
     # Add specific authors if desired:
-    # { name = "Your Name", email = "your.email@example.com" }
+    # { name = "Satya Pratheek TATA", email = "satyapratheek.tata@edhec.com" }
 ]
 classifiers = [
     "Development Status :: 3 - Alpha",

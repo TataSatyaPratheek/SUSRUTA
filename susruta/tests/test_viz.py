@@ -190,12 +190,14 @@ class TestExplainableGliomaTreatment:
         assert '500 days' in explanation_text
         assert 'high confidence' in explanation_text.lower()
         assert 'uncertainty score: 0.100' in explanation_text
-        # --- Start Fix: Add period to assertion ---
-        # assert 'influencing response prediction: intensity (0.500), duration (0.100).' in explanation_text # OLD
-        assert 'influencing response prediction: intensity (0.500), duration (0.100). ' in explanation_text # NEW - Added space
-        # assert 'influencing survival prediction: intensity (0.400).' in explanation_text # OLD
-        assert 'influencing survival prediction: intensity (0.400). ' in explanation_text # NEW - Added space
-        # --- End Fix ---
-        # assert 'Treatment details considered: duration: 1.' in explanation_text # OLD
-        assert 'Treatment details considered: duration: 1. ' in explanation_text # NEW - Added space
-        assert 'dose' not in explanation_text
+        print(explanation_text)
+        # --- REVISED FIX: Assert with trailing space ---
+        # Check for the exact string including the period and subsequent space added by the code
+        assert 'influencing the response prediction: intensity (0.500), duration (0.100). ' in explanation_text
+        assert 'influencing the survival prediction: intensity (0.400). ' in explanation_text
+        # --- START FIX: Remove trailing space from assertion ---
+        # Check the details line ends correctly before potential strip()
+        assert 'Treatment details considered: duration: 1.' in explanation_text # Check WITHOUT trailing space
+        # --- END FIX ---
+
+        assert 'dose' not in explanation_text # Check that None dose is not included

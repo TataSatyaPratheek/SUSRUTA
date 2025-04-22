@@ -31,18 +31,24 @@ class TestTreatmentSimulator:
         """Test encoding of treatment configurations."""
         surgery_option = treatment_options[0]
         encoded = treatment_simulator._encode_treatment(surgery_option)
+        # --- START FIX ---
         # Expected length: 4 (category) + 3 (dose, duration, intensity) = 7
-        assert len(encoded) == 7
-        assert encoded[0] == 1 and encoded[1:4] == [0,0,0] # surgery category
-        # dose=0.0, duration=1.0, intensity=0.9
-        assert encoded[4:] == [0.0, 1.0, 0.9]
+        assert len(encoded) == 7, f"Expected length 7, but got {len(encoded)}"
+        # surgery category: [1.0, 0.0, 0.0, 0.0]
+        assert encoded[0:4] == [1.0, 0.0, 0.0, 0.0], f"Category encoding mismatch: {encoded[0:4]}"
+        # numerical: dose=0.0, duration=1.0, intensity=0.9
+        assert encoded[4:] == pytest.approx([0.0, 1.0, 0.9]), f"Numerical encoding mismatch: {encoded[4:]}"
+        # --- END FIX ---
 
         chemo_option = treatment_options[2]
         encoded_chemo = treatment_simulator._encode_treatment(chemo_option)
-        assert len(encoded_chemo) == 7
-        assert encoded_chemo[2] == 1 and encoded_chemo[0:2] == [0,0] and encoded_chemo[3] == 0 # chemo category
-        # dose=150.0, duration=120.0, intensity=0.0
-        assert encoded_chemo[4:] == [150.0, 120.0, 0.0]
+        # --- START FIX ---
+        assert len(encoded_chemo) == 7, f"Expected length 7, but got {len(encoded_chemo)}"
+        # chemo category: [0.0, 0.0, 1.0, 0.0]
+        assert encoded_chemo[0:4] == [0.0, 0.0, 1.0, 0.0], f"Category encoding mismatch: {encoded_chemo[0:4]}"
+        # numerical: dose=150.0, duration=120.0, intensity=0.0
+        assert encoded_chemo[4:] == pytest.approx([150.0, 120.0, 0.0]), f"Numerical encoding mismatch: {encoded_chemo[4:]}"
+        # --- END FIX ---
 
     def test_find_similar_treatments(self, treatment_simulator, treatment_options, pyg_data, knowledge_graph):
         """Test finding similar treatments in the graph."""

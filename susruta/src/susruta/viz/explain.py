@@ -283,7 +283,7 @@ class ExplainableGliomaTreatment:
         else:
             uncertainty_level = "low confidence (high uncertainty)"
 
-            explanation_text += f"The model prediction has {uncertainty_level} (uncertainty score: {uncertainty:.3f})." # Keep period
+        explanation_text += f"The model prediction has {uncertainty_level} (uncertainty score: {uncertainty:.3f})." # Keep period
 
         if response_features:
             explanation_text += "\n\nKey factors influencing the response prediction: "

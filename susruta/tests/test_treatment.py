@@ -6,6 +6,7 @@ import torch
 import networkx as nx
 from torch_geometric.data import HeteroData
 from unittest.mock import patch, MagicMock
+import numpy as np # Import numpy
 
 # Import classes directly (fixtures are now in conftest.py)
 from susruta.treatment import TreatmentSimulator
@@ -31,24 +32,20 @@ class TestTreatmentSimulator:
         """Test encoding of treatment configurations."""
         surgery_option = treatment_options[0]
         encoded = treatment_simulator._encode_treatment(surgery_option)
-        # --- START FIX ---
         # Expected length: 4 (category) + 3 (dose, duration, intensity) = 7
         assert len(encoded) == 7, f"Expected length 7, but got {len(encoded)}"
         # surgery category: [1.0, 0.0, 0.0, 0.0]
         assert encoded[0:4] == [1.0, 0.0, 0.0, 0.0], f"Category encoding mismatch: {encoded[0:4]}"
         # numerical: dose=0.0, duration=1.0, intensity=0.9
         assert encoded[4:] == pytest.approx([0.0, 1.0, 0.9]), f"Numerical encoding mismatch: {encoded[4:]}"
-        # --- END FIX ---
 
         chemo_option = treatment_options[2]
         encoded_chemo = treatment_simulator._encode_treatment(chemo_option)
-        # --- START FIX ---
         assert len(encoded_chemo) == 7, f"Expected length 7, but got {len(encoded_chemo)}"
         # chemo category: [0.0, 0.0, 1.0, 0.0]
         assert encoded_chemo[0:4] == [0.0, 0.0, 1.0, 0.0], f"Category encoding mismatch: {encoded_chemo[0:4]}"
         # numerical: dose=150.0, duration=120.0, intensity=0.0
         assert encoded_chemo[4:] == pytest.approx([150.0, 120.0, 0.0]), f"Numerical encoding mismatch: {encoded_chemo[4:]}"
-        # --- END FIX ---
 
     def test_find_similar_treatments(self, treatment_simulator, treatment_options, pyg_data, knowledge_graph):
         """Test finding similar treatments in the graph."""
@@ -109,22 +106,20 @@ class TestTreatmentSimulator:
     def test_simulate_treatments(self, mock_find_similar, treatment_simulator, treatment_options, pyg_data):
         """Test simulating outcomes for different treatments."""
         # --- Setup Mock Model Behavior ---
-        # Create a MagicMock to replace the model instance within the simulator for this test
-        # --- Start Fix: Remove spec=GliomaGNN ---
         mock_model_instance = MagicMock()
-        # --- End Fix ---
-        mock_model_instance.hidden_channels = treatment_simulator.model.hidden_channels # Copy hidden_channels
-        mock_model_instance.device = treatment_simulator.device # Copy device
+        mock_model_instance.hidden_channels = treatment_simulator.model.hidden_channels
+        mock_model_instance.device = treatment_simulator.device
 
         # Mock the prediction heads
         mock_model_instance.response_head = MagicMock(return_value=torch.tensor([[0.8]], device=treatment_simulator.device))
         mock_model_instance.survival_head = MagicMock(return_value=torch.tensor([[500.0]], device=treatment_simulator.device))
         mock_model_instance.uncertainty_head = MagicMock(return_value=torch.tensor([[0.1]], device=treatment_simulator.device))
 
-        # Mock the node encoder for 'treatment' (used in fallback of _find_similar_treatments)
-        mock_treatment_embedding = torch.randn(mock_model_instance.hidden_channels, device=treatment_simulator.device)
-        mock_model_instance.node_encoders = MagicMock()
-        mock_model_instance.node_encoders.__getitem__.side_effect = lambda key: MagicMock(return_value=mock_treatment_embedding) if key == 'treatment' else MagicMock()
+        # Mock the node encoder for 'treatment'
+        mock_treatment_embedding = torch.randn(1, mock_model_instance.hidden_channels, device=treatment_simulator.device) # Ensure batch dim
+        mock_encoder = MagicMock(return_value=mock_treatment_embedding)
+        mock_encoder.in_features = 7 # Match the expected feature length from _encode_treatment
+        mock_model_instance.node_encoders = {'treatment': mock_encoder} # Assign directly
 
         # Configure forward directly on the mock instance
         mock_embeddings = {
@@ -134,20 +129,21 @@ class TestTreatmentSimulator:
             # Add other node types if necessary based on pyg_data
         }
         # Make the mock instance's forward method return the desired tuple
-        mock_model_instance.return_value = (None, mock_embeddings) # NEW - Set return value for the call
+        mock_model_instance.return_value = (None, mock_embeddings)
 
-        # Configure the mock _find_similar_treatments (patched at class level, applied to instance)
-        mock_find_similar.return_value = [mock_embeddings['treatment'][0]] if pyg_data['treatment'].num_nodes > 0 else []
+        # Configure the mock _find_similar_treatments
+        # Return an empty list to force fallback to encoder
+        mock_find_similar.return_value = []
 
         # --- Replace the simulator's model with the configured mock ---
-        original_model = treatment_simulator.model # Store original if needed later
+        original_model = treatment_simulator.model
         treatment_simulator.model = mock_model_instance
-        treatment_simulator.model.eval = MagicMock() # Mock eval if called
+        treatment_simulator.model.eval = MagicMock()
 
         # --- Run the simulation ---
-        # Use patient/tumor IDs known to be in the fixture
-        patient_id = pyg_data['patient'].original_ids[0] if pyg_data['patient'].num_nodes > 0 else "patient_1"
-        tumor_id = pyg_data['tumor'].original_ids[0] if pyg_data['tumor'].num_nodes > 0 else "tumor_1"
+        # Use patient/tumor IDs known to be in the fixture (e.g., patient 3)
+        patient_id = "patient_3"
+        tumor_id = "tumor_3"
 
         # Ensure patient/tumor IDs exist in the data for indexing
         if not hasattr(pyg_data['patient'], 'original_ids') or patient_id not in pyg_data['patient'].original_ids:
@@ -166,14 +162,17 @@ class TestTreatmentSimulator:
         assert results['option_0']['uncertainty'] == pytest.approx(0.1)
 
         # Check mocks were called
-        mock_model_instance.assert_called_once() # NEW - Check the instance was called
+        mock_model_instance.assert_called_once()
         assert mock_find_similar.call_count == len(treatment_options)
         # Check calls to the heads on the *mocked model instance*
         assert mock_model_instance.response_head.call_count == len(treatment_options)
         assert mock_model_instance.survival_head.call_count == len(treatment_options)
         assert mock_model_instance.uncertainty_head.call_count == len(treatment_options)
+        # Check encoder was called (since find_similar returned empty)
+        assert mock_model_instance.node_encoders['treatment'].call_count == len(treatment_options)
 
-        # Restore original model if necessary (though test scope usually handles cleanup)
+
+        # Restore original model if necessary
         treatment_simulator.model = original_model
 
     def test_rank_treatments(self, treatment_simulator):
@@ -190,9 +189,15 @@ class TestTreatmentSimulator:
             'option_A': {'response_prob': 0.9, 'survival_days': 400, 'uncertainty': 0.1},
             'option_B': {'response_prob': 0.6, 'survival_days': 600, 'uncertainty': 0.2}
         }
+        # Default weights: {'response_prob': 0.4, 'survival_days': 0.4, 'uncertainty': -0.2}
+        # Normalize A: resp=1.0, surv=0.0, unc=0.0 -> Score = 0.4*1.0 + 0.4*0.0 - 0.2*0.0 = 0.4
+        # Normalize B: resp=0.0, surv=1.0, unc=1.0 -> Score = 0.4*0.0 + 0.4*1.0 - 0.2*1.0 = 0.2
         ranked_default_conflict = treatment_simulator.rank_treatments(conflicting_outcomes)
         assert ranked_default_conflict == ['option_A', 'option_B']
 
+        # Survival heavy weights: {'response_prob': 0.1, 'survival_days': 0.8, 'uncertainty': -0.1}
+        # Normalize A: resp=1.0, surv=0.0, unc=0.0 -> Score = 0.1*1.0 + 0.8*0.0 - 0.1*0.0 = 0.1
+        # Normalize B: resp=0.0, surv=1.0, unc=1.0 -> Score = 0.1*0.0 + 0.8*1.0 - 0.1*1.0 = 0.7
         ranked_survival_heavy = treatment_simulator.rank_treatments(
             conflicting_outcomes,
             weights={'response_prob': 0.1, 'survival_days': 0.8, 'uncertainty': -0.1}

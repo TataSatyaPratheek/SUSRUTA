@@ -20,34 +20,39 @@ from susruta.utils import MemoryTracker
 
 @pytest.fixture(scope="session")
 def synthetic_clinical_data():
-    """Create synthetic clinical data for testing."""
+    """Create synthetic clinical data for testing using P3, P5, P6."""
     np.random.seed(42)  # For reproducibility
+    patient_ids = [3, 5, 6] # Use specified patient IDs
+    n_patients = len(patient_ids)
     data = pd.DataFrame({
-        'patient_id': range(1, 11),
-        'age': np.random.randint(30, 80, 10),
-        'sex': np.random.choice(['M', 'F'], 10),
-        'karnofsky_score': np.random.randint(60, 100, 10),
-        'grade': np.random.choice(['II', 'III', 'IV'], 10),
-        'histology': np.random.choice(['Astrocytoma', 'Oligodendroglioma', 'GBM'], 10),
-        'location': np.random.choice(['Frontal', 'Temporal', 'Parietal'], 10),
-        'idh_mutation': np.random.choice([0, 1], 10),
-        'mgmt_methylation': np.random.choice([0, 1], 10)
+        'patient_id': patient_ids,
+        'age': np.random.randint(30, 80, n_patients),
+        'sex': np.random.choice(['M', 'F'], n_patients),
+        'karnofsky_score': np.random.randint(60, 100, n_patients),
+        'grade': np.random.choice(['II', 'III', 'IV'], n_patients),
+        'histology': np.random.choice(['Astrocytoma', 'Oligodendroglioma', 'GBM'], n_patients),
+        'location': np.random.choice(['Frontal', 'Temporal', 'Parietal'], n_patients),
+        'idh_mutation': np.random.choice([0, 1], n_patients),
+        'mgmt_methylation': np.random.choice([0, 1], n_patients)
     })
-    # Introduce some NaNs for imputation testing
-    data.loc[0, 'age'] = np.nan
-    data.loc[1, 'sex'] = np.nan
-    data.loc[2, 'karnofsky_score'] = np.nan
+    # Introduce some NaNs for imputation testing (adjust indices if needed)
+    data.loc[data['patient_id'] == 3, 'age'] = np.nan
+    data.loc[data['patient_id'] == 5, 'sex'] = np.nan
+    data.loc[data['patient_id'] == 6, 'karnofsky_score'] = np.nan
     return data
 
 @pytest.fixture(scope="session")
 def synthetic_treatment_data():
-    """Create synthetic treatment data for testing."""
+    """Create synthetic treatment data for testing using P3, P5, P6."""
     np.random.seed(43)  # Different seed
     treatments = []
-    for patient_id in range(1, 11):
+    patient_ids = [3, 5, 6] # Use specified patient IDs
+    treatment_counter = 1
+    for patient_id in patient_ids:
         num_treatments = np.random.randint(1, 4) # 1 to 3 treatments per patient
         for i in range(num_treatments):
-            treatment_id = len(treatments) + 1
+            treatment_id = treatment_counter # Use simple integer ID here
+            treatment_counter += 1
             category = np.random.choice(['surgery', 'radiation', 'chemotherapy'])
             dose = None
             duration_days = np.random.randint(1, 180)
@@ -60,7 +65,7 @@ def synthetic_treatment_data():
             survival_days = np.random.randint(30, 1500)
             treatments.append({
                 'patient_id': patient_id,
-                'treatment_id': treatment_id, # Use simple integer ID here
+                'treatment_id': treatment_id,
                 'category': category,
                 'dose': dose,
                 'duration_days': duration_days,
@@ -73,10 +78,11 @@ def synthetic_treatment_data():
 
 @pytest.fixture(scope="session")
 def synthetic_imaging_features():
-    """Create synthetic imaging features (dict format) for testing."""
+    """Create synthetic imaging features (dict format) for testing using P3, P5, P6."""
     np.random.seed(44)
     imaging_features = {}
-    for patient_id in range(1, 11):
+    patient_ids = [3, 5, 6] # Use specified patient IDs
+    for patient_id in patient_ids:
         imaging_features[patient_id] = {
             't1c': {'mean': np.random.uniform(100, 200), 'std': np.random.uniform(10, 50)},
             't2w': {'mean': np.random.uniform(150, 250), 'std': np.random.uniform(20, 60)},
@@ -94,6 +100,7 @@ def clinical_processor():
 @pytest.fixture(scope="session")
 def mri_processor():
     """Create MRI processor instance."""
+    # Note: This fixture might not be used directly if tests mock the processor
     return EfficientMRIProcessor(memory_limit_mb=1000)
 
 # --- Processed Data Fixtures ---
@@ -112,7 +119,7 @@ def processed_treatment_data(synthetic_treatment_data, clinical_processor):
 
 @pytest.fixture(scope="session")
 def knowledge_graph(synthetic_clinical_data, synthetic_treatment_data, synthetic_imaging_features):
-    """Create a NetworkX knowledge graph."""
+    """Create a NetworkX knowledge graph using P3, P5, P6."""
     kg_builder = GliomaKnowledgeGraph(memory_limit_mb=2000)
     # Add data - ensure order allows connections to be made
     kg_builder.add_clinical_data(synthetic_clinical_data)
@@ -179,13 +186,11 @@ def gnn_model(pyg_data):
 
     edge_feature_dims = {}
     for edge_type in pyg_data.edge_types:
-        # --- Start Fix: Use pyg_data instead of data ---
         if hasattr(pyg_data[edge_type], 'edge_attr') and pyg_data[edge_type].edge_attr is not None and pyg_data[edge_type].num_edges > 0:
              dim = pyg_data[edge_type].edge_attr.size(1)
              edge_feature_dims[edge_type] = max(dim, default_dim)
         else:
             edge_feature_dims[edge_type] = default_dim # Default if no edge attributes or no edges
-        # --- End Fix ---
 
     torch.manual_seed(42)
     model = GliomaGNN(

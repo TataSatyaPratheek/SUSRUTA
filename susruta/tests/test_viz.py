@@ -1,4 +1,4 @@
-# susruta/tests/test_visualizations.py
+# susruta/tests/test_viz.py # Renamed file
 """Tests for the visualization and explanation module."""
 
 import pytest
@@ -35,7 +35,7 @@ class TestExplainableGliomaTreatment:
              pytest.skip("Skipping explanation test: No valid treatment node at index 0.")
         if not hasattr(treatment_explainer.data['treatment'], 'x') or treatment_explainer.data['treatment'].x is None:
              pytest.skip("Skipping explanation test: Treatment node features are missing.")
-        if treatment_explainer.data['treatment'].num_node_features == 0:
+        if treatment_explainer.data['treatment'].num_nodes > 0 and treatment_explainer.data['treatment'].num_node_features == 0:
              pytest.skip("Skipping explanation test: Treatment node features have dimension 0.")
 
         treatment_feature_dim = treatment_explainer.data['treatment'].num_node_features
@@ -59,17 +59,37 @@ class TestExplainableGliomaTreatment:
             mock_forward.return_value = (predictions_output, {}) # Return dummy embeddings
 
             # Simulate gradient assignment during backward mock
-            # This is simplified: assumes backward is called and assigns *some* non-zero grad
             def assign_grad_effect(*args, **kwargs):
-                # Directly assign gradient if it's None, otherwise add to it
-                # This simulates the effect of backward() populating the grad attribute
-                if treatment_explainer.data['treatment'].x.grad is None:
-                    treatment_explainer.data['treatment'].x.grad = torch.rand_like(treatment_explainer.data['treatment'].x) * 1e-3
+                # Check if the tensor requiring grad has 'grad' attribute initialized
+                tensor_requiring_grad = None
+                for inp in treatment_explainer.data.node_items():
+                    if inp[0] == 'treatment' and hasattr(inp[1], 'x') and inp[1].x.requires_grad:
+                        tensor_requiring_grad = inp[1].x
+                        break
+
+                if tensor_requiring_grad is not None:
+                    if tensor_requiring_grad.grad is None:
+                        tensor_requiring_grad.grad = torch.rand_like(tensor_requiring_grad) * 1e-3
+                    else:
+                        tensor_requiring_grad.grad += torch.rand_like(tensor_requiring_grad) * 1e-3
                 else:
-                    # Simulate accumulation if backward is called multiple times
-                    treatment_explainer.data['treatment'].x.grad += torch.rand_like(treatment_explainer.data['treatment'].x) * 1e-3
+                    print("Warning: Could not find tensor requiring grad in assign_grad_effect.")
+
 
             mock_backward.side_effect = assign_grad_effect
+
+            # Ensure the data clone has grad enabled correctly
+            # This needs to happen *inside* the test function if data is modified
+            data_clone = treatment_explainer.data.clone() # Clone before enabling grad
+            if data_clone['treatment'].num_nodes > treatment_idx_to_test:
+                 if not hasattr(data_clone['treatment'], 'x') or data_clone['treatment'].x is None:
+                      pytest.skip("Cannot enable grad: treatment features missing in clone.")
+                 data_clone['treatment'].x.requires_grad_(True)
+                 # Replace the explainer's data with the clone for this test run
+                 treatment_explainer.data = data_clone
+            else:
+                 pytest.skip("Cannot enable grad: treatment index out of bounds in clone.")
+
 
             treatment_id = treatment_explainer.data['treatment'].original_ids[treatment_idx_to_test]
 
@@ -91,11 +111,8 @@ class TestExplainableGliomaTreatment:
             assert len(explanation['feature_importance']['response']) <= treatment_feature_dim
             assert len(explanation['feature_importance']['survival']) <= treatment_feature_dim
 
-            # --- Start Fix: Get expected feature names from model ---
-            # This assumes the explain method uses names consistent with the model's input layer
+            # Get expected feature names from model
             expected_treatment_dim = treatment_explainer.model.node_encoders['treatment'].in_features
-            # Get sorted numerical attribute names from the *first* treatment node in the original graph
-            # This is still an approximation, assuming all treatment nodes have the same attributes
             expected_feature_names = []
             if treatment_explainer.original_graph:
                  first_treatment_node = next((n for n, d in treatment_explainer.original_graph.nodes(data=True) if d.get('type') == 'treatment'), None)
@@ -112,7 +129,6 @@ class TestExplainableGliomaTreatment:
                  expected_feature_names.extend([f'feature_{i}' for i in range(len(expected_feature_names), expected_treatment_dim)])
             elif len(expected_feature_names) > expected_treatment_dim:
                  expected_feature_names = expected_feature_names[:expected_treatment_dim]
-            # --- End Fix ---
 
             response_feat_names = [f[0] for f in explanation['feature_importance']['response']]
             survival_feat_names = [f[0] for f in explanation['feature_importance']['survival']]
@@ -175,8 +191,8 @@ class TestExplainableGliomaTreatment:
         explanation = {
             'treatment_id': 'treatment_1',
             'treatment_attributes': {'category': 'surgery', 'dose': None, 'duration': 1},
-            'patient_id': 'patient_1',
-            'tumor_id': 'tumor_1',
+            'patient_id': 'patient_3', # Use updated ID
+            'tumor_id': 'tumor_3', # Use updated ID
             'predictions': {'response_probability': 0.8, 'survival_days': 500, 'uncertainty': 0.1},
             'feature_importance': {
                 'response': [('intensity', 0.5), ('duration', 0.1)],
@@ -190,14 +206,10 @@ class TestExplainableGliomaTreatment:
         assert '500 days' in explanation_text
         assert 'high confidence' in explanation_text.lower()
         assert 'uncertainty score: 0.100' in explanation_text
-        print(explanation_text)
-        # --- REVISED FIX: Assert with trailing space ---
-        # Check for the exact string including the period and subsequent space added by the code
+        # Check for the exact string including the period and subsequent space
         assert 'influencing the response prediction: intensity (0.500), duration (0.100). ' in explanation_text
         assert 'influencing the survival prediction: intensity (0.400). ' in explanation_text
-        # --- START FIX: Remove trailing space from assertion ---
         # Check the details line ends correctly before potential strip()
-        assert 'Treatment details considered: duration: 1.' in explanation_text # Check WITHOUT trailing space
-        # --- END FIX ---
+        assert 'Treatment details considered: duration: 1.' in explanation_text
 
         assert 'dose' not in explanation_text # Check that None dose is not included

@@ -1,0 +1,171 @@
+<svg width="900" height="1250" xmlns="http://www.w3.org/2000/svg" font-family="Arial, sans-serif" font-size="14px">
+
+    <defs>
+      <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="0" refY="3.5" orient="auto">
+        <polygon points="0 0, 10 3.5, 0 7" fill="#333" />
+      </marker>
+      <style>
+        .block { fill: #e0f2f7; stroke: #333; stroke-width: 1.5; rx: 5; ry: 5; }
+        .io-block { fill: #fff9c4; stroke: #333; stroke-width: 1.5; rx: 5; ry: 5; }
+        .head-block { fill: #c8e6c9; stroke: #333; stroke-width: 1.5; rx: 5; ry: 5; }
+        .text-label { text-anchor: middle; fill: #333; font-size: 13px; }
+        .text-label-small { text-anchor: middle; fill: #555; font-size: 11px; }
+        .arrow { stroke: #333; stroke-width: 1.5; marker-end: url(#arrowhead); }
+        .dashed-arrow { stroke: #555; stroke-width: 1; marker-end: url(#arrowhead); stroke-dasharray: 4 2; }
+      </style>
+    </defs>
+  
+    <!-- Title -->
+    <text x="450" y="30" text-anchor="middle" font-size="18px" font-weight="bold">GliomaGNN Architecture</text>
+  
+    <!-- Input -->
+    <rect x="250" y="60" width="400" height="60" class="io-block" />
+    <text x="450" y="85" class="text-label">Input: Heterogeneous Graph (PyG HeteroData)</text>
+    <text x="450" y="105" class="text-label-small">(Contains x_dict, edge_index_dict)</text>
+  
+    <!-- Input Extraction -->
+    <line x1="450" y1="120" x2="450" y2="150" class="arrow" />
+    <text x="300" y="170" class="text-label">x_dict</text>
+    <text x="600" y="170" class="text-label">edge_index_dict</text>
+    <line x1="450" y1="150" x2="300" y2="160" class="arrow" />
+    <line x1="450" y1="150" x2="600" y2="160" class="dashed-arrow" />
+  
+    <!-- Node Encoding -->
+    <rect x="200" y="190" width="200" height="80" class="block" />
+    <text x="300" y="215" class="text-label">Node Feature Encoding</text>
+    <text x="300" y="235" class="text-label-small">nn.ModuleDict(</text>
+    <text x="300" y="250" class="text-label-small">nn.Linear per node type)</text>
+    <line x1="300" y1="180" x2="300" y2="190" class="arrow" />
+    <line x1="300" y1="270" x2="300" y2="300" class="arrow" />
+    <text x="300" y="290" class="text-label-small">h_dict (hidden_channels)</text>
+  
+    <!-- GNN Layer 1 -->
+    <rect x="150" y="300" width="300" height="90" class="block" />
+    <text x="300" y="325" class="text-label">GNN Layer 1: HeteroConv</text>
+    <text x="300" y="345" class="text-label-small">(Wraps GATConv)</text>
+    <text x="300" y="360" class="text-label-small">heads=4, dropout, aggr='sum'</text>
+    <text x="300" y="375" class="text-label-small">add_self_loops=False</text>
+    <line x1="600" y1="180" x2="600" y2="345" class="dashed-arrow" />
+    <line x1="600" y1="345" x2="450" y2="345" class="dashed-arrow" />
+    <line x1="300" y1="390" x2="300" y2="420" class="arrow" />
+    <text x="300" y="410" class="text-label-small">h_dict_1</text>
+  
+    <!-- Intermediate Ops 1 -->
+    <rect x="200" y="420" width="200" height="50" class="block" />
+    <text x="300" y="445" class="text-label">ReLU Activation, Dropout</text>
+    <line x1="300" y1="470" x2="300" y2="500" class="arrow" />
+    <text x="300" y="490" class="text-label-small">Processed h_dict_1</text>
+  
+    <!-- GNN Layer 2 -->
+    <rect x="150" y="500" width="300" height="90" class="block" />
+    <text x="300" y="525" class="text-label">GNN Layer 2: HeteroConv</text>
+    <text x="300" y="545" class="text-label-small">(Wraps GATConv)</text>
+    <text x="300" y="560" class="text-label-small">heads=1, dropout, aggr='sum'</text>
+    <text x="300" y="575" class="text-label-small">add_self_loops=False</text>
+    <line x1="600" y1="345" x2="600" y2="545" class="dashed-arrow" />
+    <line x1="600" y1="545" x2="450" y2="545" class="dashed-arrow" />
+    <line x1="300" y1="590" x2="300" y2="620" class="arrow" />
+    <text x="300" y="610" class="text-label-small">h_dict_2</text>
+  
+    <!-- Treatment Node Selection -->
+    <rect x="200" y="620" width="200" height="40" class="block" />
+    <text x="300" y="645" class="text-label">Select 'treatment' embeddings</text>
+    <line x1="300" y1="660" x2="300" y2="690" class="arrow" />
+    <text x="300" y="680" class="text-label-small">treatment_embeddings</text>
+  
+    <!-- Prediction Heads Branching -->
+    <line x1="300" y1="690" x2="150" y2="720" class="arrow" />
+    <line x1="300" y1="690" x2="450" y2="720" class="arrow" />
+    <line x1="300" y1="690" x2="750" y2="720" class="arrow" />
+  
+    <!-- Response Head -->
+    <rect x="50" y="720" width="200" height="150" class="head-block" />
+    <text x="150" y="745" class="text-label" font-weight="bold">Response Head</text>
+    <text x="150" y="765" class="text-label-small">Linear(h, h/2)</text>
+    <text x="150" y="785" class="text-label-small">ReLU</text>
+    <text x="150" y="805" class="text-label-small">Dropout</text>
+    <text x="150" y="825" class="text-label-small">Linear(h/2, 1)</text>
+    <text x="150" y="845" class="text-label-small">Sigmoid</text>
+    <line x1="150" y1="870" x2="150" y2="900" class="arrow" />
+    <text x="150" y="890" class="text-label-small">Response Prob.</text>
+  
+    <!-- Survival Head -->
+    <rect x="350" y="720" width="200" height="150" class="head-block" />
+    <text x="450" y="745" class="text-label" font-weight="bold">Survival Head</text>
+    <text x="450" y="765" class="text-label-small">Linear(h, h/2)</text>
+    <text x="450" y="785" class="text-label-small">ReLU</text>
+    <text x="450" y="805" class="text-label-small">Dropout</text>
+    <text x="450" y="825" class="text-label-small">Linear(h/2, 1)</text>
+    <text x="450" y="845" class="text-label-small">ReLU</text>
+    <line x1="450" y1="870" x2="450" y2="900" class="arrow" />
+    <text x="450" y="890" class="text-label-small">Survival Time</text>
+  
+    <!-- Uncertainty Head -->
+    <rect x="650" y="720" width="200" height="150" class="head-block" />
+    <text x="750" y="745" class="text-label" font-weight="bold">Uncertainty Head</text>
+    <text x="750" y="765" class="text-label-small">Linear(h, h/2)</text>
+    <text x="750" y="785" class="text-label-small">ReLU</text>
+    <text x="750" y="805" class="text-label-small">Dropout</text>
+    <text x="750" y="825" class="text-label-small">Linear(h/2, 1)</text>
+    <text x="750" y="845" class="text-label-small">Softplus</text>
+    <line x1="750" y1="870" x2="750" y2="900" class="arrow" />
+    <text x="750" y="890" class="text-label-small">Uncertainty</text>
+  
+    <!-- Output Aggregation -->
+    <line x1="150" y1="900" x2="450" y2="930" class="arrow" />
+    <line x1="450" y1="900" x2="450" y2="930" class="arrow" />
+    <line x1="750" y1="900" x2="450" y2="930" class="arrow" />
+  
+    <!-- Final Output -->
+    <rect x="300" y="930" width="300" height="50" class="io-block" />
+    <text x="450" y="955" class="text-label">Output: predictions Dictionary</text>
+  
+    <!-- Forward Pass Notes -->
+     <g transform="translate(550, 200)">
+        <rect x="0" y="0" width="250" height="130" fill="#f0f0f0" stroke="#aaa" rx="5" ry="5" />
+        <text x="125" y="20" class="text-label" font-weight="bold">Forward Pass Notes:</text>
+        <text x="125" y="45" class="text-label-small" text-anchor="start">1. Node Encoding (per type)</text>
+        <text x="125" y="65" class="text-label-small" text-anchor="start">2. _ensure_input_dict / Edge Filter</text>
+        <text x="125" y="85" class="text-label-small" text-anchor="start">3. Conv1 -> ReLU -> Dropout</text>
+        <text x="125" y="105" class="text-label-small" text-anchor="start">4. _ensure_input_dict / Edge Filter</text>
+        <text x="125" y="125" class="text-label-small" text-anchor="start">5. Conv2 -> Prediction Heads</text>
+     </g>
+  
+     <!-- Training Context Notes -->
+     <g transform="translate(550, 990)">
+        <rect x="0" y="0" width="250" height="70" fill="#f0f0f0" stroke="#aaa" rx="5" ry="5" />
+        <text x="125" y="20" class="text-label" font-weight="bold">Training Notes:</text>
+        <text x="125" y="45" class="text-label-small" text-anchor="start">Loss: BCE(response) + MSE(survival)</text>
+        <text x="125" y="65" class="text-label-small" text-anchor="start">Optimizer: Adam</text>
+     </g>
+  
+     <!-- Framework Notes -->
+     <g transform="translate(50, 990)">
+        <rect x="0" y="0" width="200" height="70" fill="#f0f0f0" stroke="#aaa" rx="5" ry="5" />
+        <text x="100" y="20" class="text-label" font-weight="bold">Framework:</text>
+        <text x="100" y="45" class="text-label-small" text-anchor="start">PyTorch</text>
+        <text x="100" y="65" class="text-label-small" text-anchor="start">PyTorch Geometric (PyG)</text>
+     </g>
+  
+     <!-- Legend -->
+      <g transform="translate(50, 1100)">
+          <rect x="0" y="0" width="150" height="100" fill="#f9f9f9" stroke="#ccc" rx="5" ry="5" />
+          <text x="75" y="20" class="text-label" font-weight="bold">Legend</text>
+          <rect x="10" y="30" width="20" height="15" class="io-block" />
+          <text x="80" y="42" class="text-label-small">Input/Output</text>
+          <rect x="10" y="55" width="20" height="15" class="block" />
+          <text x="80" y="67" class="text-label-small">Processing Layer</text>
+          <rect x="10" y="80" width="20" height="15" class="head-block" />
+          <text x="80" y="92" class="text-label-small">Prediction Head</text>
+      </g>
+      <g transform="translate(220, 1100)">
+          <rect x="0" y="0" width="150" height="60" fill="#f9f9f9" stroke="#ccc" rx="5" ry="5" />
+          <text x="75" y="20" class="text-label" font-weight="bold">Arrows</text>
+          <line x1="10" y1="35" x2="40" y2="35" class="arrow" />
+          <text x="100" y="40" class="text-label-small">Data Flow</text>
+          <line x1="10" y1="50" x2="40" y2="50" class="dashed-arrow" />
+          <text x="100" y="55" class="text-label-small">Edge Indices</text>
+      </g>
+  
+  </svg>
+  

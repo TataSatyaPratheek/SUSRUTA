@@ -1,65 +1,57 @@
 name: Python Tests (SUSRUTA)
 
-# Controls when the workflow will run
 on:
   push:
-    branches: [ main ] # Run on pushes to the main branch
+    branches: [ main, develop ]
   pull_request:
-    branches: [ main ] # Run on pull requests targeting the main branch
-  # You can add other branches like 'develop' if needed:
-  # push:
-  #   branches: [ main, develop ]
-  # pull_request:
-  #   branches: [ main, develop ]
+    branches: [ main, develop ]
 
-# A workflow run is made up of one or more jobs that can run sequentially or in parallel
 jobs:
   test:
-    # The type of runner that the job will run on
-    runs-on: ubuntu-latest # Use a standard Linux runner
+    runs-on: ubuntu-latest
     strategy:
       matrix:
-        # Test against multiple Python versions (adjust based on pyproject.toml)
         python-version: ["3.9", "3.10", "3.11", "3.12"]
+      fail-fast: false
 
-    # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
-      # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # Sets up python for use in actions
       - name: Set up Python ${{ matrix.python-version }}
         uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
+          cache: 'pip'
 
-      # Installs dependencies
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
+          
           # Install CPU version of PyTorch first (more robust for CI)
-          # Find the correct command for your desired torch version from pytorch.org if needed
           pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu
-
-          # Install the package itself along with BOTH dev and viz dependencies
-          # Also install nibabel explicitly
-          # torch-geometric should now pick up the installed CPU torch version
+          
+          # Install other explicit dependencies
+          pip install nibabel networkx matplotlib plotly scikit-learn
+          pip install torch-geometric pyg-lib torch-scatter torch-sparse -f https://data.pyg.org/whl/torch-$(python -c "import torch; print(torch.__version__.split('+')[0])")+cpu.html
+          
+          # Install the package itself with dev and viz dependencies
           cd susruta
-          pip install .[dev,viz] nibabel
-          cd ..
+          pip install -e .[dev,viz]
 
+      - name: Test import modules
+        run: |
+          python -c "import susruta; print(f'SUSRUTA version: {susruta.__version__}')"
+          python -c "import torch; print(f'PyTorch version: {torch.__version__}')"
+          python -c "import torch_geometric; print(f'PyG version: {torch_geometric.__version__}')"
 
-      # Runs the tests using pytest with coverage
       - name: Run tests with pytest
         run: |
-          # Generate coverage report in XML format for Codecov
           python -m pytest --cov=susruta --cov-report=xml -vv
 
-      # Optional: Upload coverage reports to Codecov
-      # - name: Upload coverage to Codecov
-      #   uses: codecov/codecov-action@v4
-      #   with:
-      #     token: ${{ secrets.CODECOV_TOKEN }} # Optional for public repos, required for private
-      #     file: ./coverage.xml # Path to coverage report
-      #     fail_ci_if_error: true # Optional: fail workflow if upload error
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          file: ./coverage.xml
+          fail_ci_if_error: false
+          token: ${{ secrets.CODECOV_TOKEN }}
